@@ -1,4 +1,8 @@
-import { copyFile, mkdir } from "node:fs/promises";
-await mkdir("dist", { recursive: true });
-await copyFile("src/ha-spc-flexc-card.js", "dist/ha-spc-flexc-card.js");
-console.log("Built dist/ha-spc-flexc-card.js");
+import { copyFile } from "node:fs/promises";
+
+await copyFile(
+  "src/ha-spc-flexc-card.js",
+  "ha-spc-flexc-card.js"
+);
+
+console.log("Built ha-spc-flexc-card.js");
