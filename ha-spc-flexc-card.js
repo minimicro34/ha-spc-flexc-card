@@ -1,65 +1,1527 @@
-const CARD_VERSION = "0.1.0-dev";
+const CARD_VERSION = "0.2.0-dev";
 
 class SpcFlexCCard extends HTMLElement {
-  static getConfigElement() { return document.createElement("spc-flexc-card-editor"); }
+  static getConfigElement() {
+    return document.createElement("spc-flexc-card-editor");
+  }
+
   static getStubConfig(hass) {
-    const entity = Object.keys(hass.states).find((id) => id.startsWith("alarm_control_panel."));
+    const entity = Object.keys(hass.states).find((id) =>
+      id.startsWith("alarm_control_panel.")
+    );
+
     return entity ? { entity } : {};
   }
+
   setConfig(config) {
-    if (!config.entity) throw new Error("SPC FlexC Card requires an alarm_control_panel entity.");
-    this._config = { name: "SPC FlexC", show_areas: true, show_controls: true, confirm_actions: true, ...config };
+    if (!config.entity) {
+      throw new Error(
+        "SPC FlexC Card requires an alarm_control_panel entity."
+      );
+    }
+
+    this._config = {
+      name: "SPC FlexC",
+      show_controls: true,
+      confirm_actions: true,
+      ...config,
+    };
+
+    if (!["system", "areas", "zones"].includes(this._activeTab)) {
+      this._activeTab = "system";
+    }
+
     this._render();
   }
-  set hass(hass) { this._hass = hass; this._render(); }
-  getCardSize() { return 4; }
-  _escapeHtml(v) { return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  getCardSize() {
+    return 8;
+  }
+
+  _escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
   _stateLabel(state) {
-    return ({disarmed:"Disarmed",armed_away:"Armed",armed_home:"Part Set A",armed_night:"Part Set B",arming:"Arming",disarming:"Disarming",triggered:"Triggered",pending:"Pending",unavailable:"Unavailable",unknown:"Mixed / Unknown"})[state] || state || "Unknown";
+    return (
+      {
+        disarmed: "Désarmée",
+        armed_away: "Armée",
+        armed_home: "Partiel A",
+        armed_night: "Partiel B",
+        armed_vacation: "Armée",
+        armed_custom_bypass: "Armée",
+        arming: "Armement…",
+        disarming: "Désarmement…",
+        triggered: "ALARME",
+        pending: "Temporisation",
+        unavailable: "Indisponible",
+        unknown: "État inconnu",
+      }[state] ||
+      state ||
+      "Inconnu"
+    );
   }
+
+  _stateClass(state) {
+    switch (state) {
+      case "disarmed":
+        return "ok";
+
+      case "armed_away":
+      case "armed_home":
+      case "armed_night":
+      case "armed_vacation":
+      case "armed_custom_bypass":
+      case "arming":
+      case "pending":
+        return "warning";
+
+      case "triggered":
+        return "danger";
+
+      default:
+        return "muted";
+    }
+  }
+
+  _stateIcon(state) {
+    switch (state) {
+      case "disarmed":
+        return "mdi:lock-open-variant";
+
+      case "armed_away":
+      case "armed_home":
+      case "armed_night":
+      case "armed_vacation":
+      case "armed_custom_bypass":
+        return "mdi:lock";
+
+      case "arming":
+      case "pending":
+        return "mdi:lock-clock";
+
+      case "triggered":
+        return "mdi:alarm-light";
+
+      case "unavailable":
+        return "mdi:alert-circle";
+
+      default:
+        return "mdi:shield-outline";
+    }
+  }
+
+  _modeLabel(mode) {
+    const normalized = String(mode ?? "").toLowerCase();
+
+    const labels = {
+      unset: "Désarmé",
+      disarmed: "Désarmé",
+      full_set: "Armé",
+      fullset: "Armé",
+      set: "Armé",
+      armed: "Armé",
+      part_set_a: "Partiel A",
+      partset_a: "Partiel A",
+      part_set_b: "Partiel B",
+      partset_b: "Partiel B",
+      part_set: "Partiel",
+      partset: "Partiel",
+      unknown: "Inconnu",
+    };
+
+    return labels[normalized] || String(mode ?? "Inconnu");
+  }
+
+  _modeClass(mode) {
+    const normalized = String(mode ?? "").toLowerCase();
+
+    if (
+      normalized === "unset" ||
+      normalized === "disarmed"
+    ) {
+      return "ok";
+    }
+
+    if (
+      normalized.includes("set") ||
+      normalized.includes("armed")
+    ) {
+      return "warning";
+    }
+
+    return "muted";
+  }
+
+  _getAlarmEntity() {
+    if (!this._hass || !this._config) {
+      return undefined;
+    }
+
+    return this._hass.states[this._config.entity];
+  }
+
+  _getAreas() {
+    const alarm = this._getAlarmEntity();
+    const rawAreas = alarm?.attributes?.areas;
+
+    if (!rawAreas || typeof rawAreas !== "object") {
+      return [];
+    }
+
+    return Object.entries(rawAreas)
+      .map(([id, area]) => ({
+        id: String(id),
+        numericId: Number(id),
+        name: area?.name || `Secteur ${id}`,
+        mode: area?.mode,
+        modeName: area?.mode_name,
+        raw: area,
+      }))
+      .sort((a, b) => {
+        if (
+          Number.isFinite(a.numericId) &&
+          Number.isFinite(b.numericId)
+        ) {
+          return a.numericId - b.numericId;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+  }
+
+  /*
+   * A Home Assistant entity is considered an SPC zone only if all three
+   * SPC zone attributes are present:
+   *
+   *   zone_id
+   *   area_id
+   *   spc_zone_type
+   *
+   * This deliberately excludes system diagnostics such as RF jamming,
+   * modem faults, X-BUS faults, FlexC connection, etc.
+   */
+  _getZones() {
+    if (!this._hass) {
+      return [];
+    }
+
+    return Object.entries(this._hass.states)
+      .filter(([entityId, stateObj]) => {
+        if (!entityId.startsWith("binary_sensor.")) {
+          return false;
+        }
+
+        const attrs = stateObj?.attributes || {};
+
+        return (
+          attrs.zone_id !== undefined &&
+          attrs.zone_id !== null &&
+          attrs.area_id !== undefined &&
+          attrs.area_id !== null &&
+          attrs.spc_zone_type !== undefined &&
+          attrs.spc_zone_type !== null &&
+          String(attrs.spc_zone_type).trim() !== ""
+        );
+      })
+      .map(([entityId, stateObj]) => {
+        const attrs = stateObj.attributes || {};
+
+        return {
+          entityId,
+          state: stateObj.state,
+          zoneId: attrs.zone_id,
+          areaId: attrs.area_id,
+          zoneType: String(attrs.spc_zone_type || "").toLowerCase(),
+          deviceClass: String(attrs.device_class || "").toLowerCase(),
+          name:
+            attrs.friendly_name ||
+            entityId.split(".").pop() ||
+            `Zone ${attrs.zone_id}`,
+          logicInput: attrs.logic_input,
+          status: attrs.status,
+          procState: attrs.proc_state,
+          alarmState: attrs.alarm_state,
+          actuationsSinceLastRead: attrs.actuations_since_last_read,
+          raw: stateObj,
+        };
+      })
+      .sort((a, b) => {
+        const areaA = Number(a.areaId);
+        const areaB = Number(b.areaId);
+
+        if (
+          Number.isFinite(areaA) &&
+          Number.isFinite(areaB) &&
+          areaA !== areaB
+        ) {
+          return areaA - areaB;
+        }
+
+        const zoneA = Number(a.zoneId);
+        const zoneB = Number(b.zoneId);
+
+        if (
+          Number.isFinite(zoneA) &&
+          Number.isFinite(zoneB)
+        ) {
+          return zoneA - zoneB;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+  }
+
+  _getNormalZones() {
+    return this._getZones().filter(
+      (zone) =>
+        zone.zoneType !== "tamper" &&
+        zone.deviceClass !== "tamper"
+    );
+  }
+
+  _getTamperZones() {
+    return this._getZones().filter(
+      (zone) =>
+        zone.zoneType === "tamper" ||
+        zone.deviceClass === "tamper"
+    );
+  }
+
+  _areaName(areaId) {
+    const id = String(areaId);
+    const area = this._getAreas().find(
+      (candidate) => String(candidate.id) === id
+    );
+
+    return area?.name || `Secteur ${id}`;
+  }
+
+  _zoneIcon(zone) {
+    if (
+      zone.zoneType === "tamper" ||
+      zone.deviceClass === "tamper"
+    ) {
+      return "mdi:shield-alert-outline";
+    }
+
+    switch (zone.deviceClass) {
+      case "motion":
+      case "occupancy":
+        return "mdi:motion-sensor";
+
+      case "door":
+        return "mdi:door";
+
+      case "window":
+        return "mdi:window-closed-variant";
+
+      case "opening":
+        return "mdi:door-open";
+
+      case "smoke":
+        return "mdi:smoke-detector";
+
+      case "heat":
+        return "mdi:fire";
+
+      case "moisture":
+        return "mdi:water-alert";
+
+      case "gas":
+        return "mdi:gas-cylinder";
+
+      default:
+        break;
+    }
+
+    switch (zone.zoneType) {
+      case "entry_exit":
+      case "entry-exit":
+        return "mdi:door-open";
+
+      case "fire":
+        return "mdi:fire";
+
+      case "panic":
+        return "mdi:alarm-light";
+
+      default:
+        return "mdi:shield-home-outline";
+    }
+  }
+
+  _zoneStateInfo(zone) {
+    const active = zone.state === "on";
+
+    if (
+      zone.zoneType === "tamper" ||
+      zone.deviceClass === "tamper"
+    ) {
+      return {
+        label: active ? "AUTOPROTECTION" : "Normal",
+        className: active ? "danger" : "ok",
+      };
+    }
+
+    if (zone.state === "unavailable") {
+      return {
+        label: "Indisponible",
+        className: "muted",
+      };
+    }
+
+    if (zone.state === "unknown") {
+      return {
+        label: "Inconnu",
+        className: "muted",
+      };
+    }
+
+    switch (zone.deviceClass) {
+      case "motion":
+      case "occupancy":
+        return {
+          label: active ? "Mouvement" : "Repos",
+          className: active ? "warning" : "ok",
+        };
+
+      case "door":
+      case "window":
+      case "opening":
+        return {
+          label: active ? "Ouvert" : "Fermé",
+          className: active ? "warning" : "ok",
+        };
+
+      case "smoke":
+        return {
+          label: active ? "Fumée détectée" : "Normal",
+          className: active ? "danger" : "ok",
+        };
+
+      case "heat":
+        return {
+          label: active ? "Chaleur détectée" : "Normal",
+          className: active ? "danger" : "ok",
+        };
+
+      default:
+        return {
+          label: active ? "Actif" : "Repos",
+          className: active ? "warning" : "ok",
+        };
+    }
+  }
+
   async _callAlarmService(service) {
-    if (!this._hass || !this._config) return;
-    const state = this._hass.states[this._config.entity];
-    const name = state?.attributes?.friendly_name || this._config.name || this._config.entity;
-    const prompt = service === "alarm_arm_away" ? `Arm ${name}?` : `Disarm ${name}?`;
-    if (this._config.confirm_actions && !window.confirm(prompt)) return;
-    await this._hass.callService("alarm_control_panel", service, { entity_id: this._config.entity });
+    if (!this._hass || !this._config) {
+      return;
+    }
+
+    const state = this._getAlarmEntity();
+
+    const name =
+      state?.attributes?.friendly_name ||
+      this._config.name ||
+      this._config.entity;
+
+    let prompt = `Exécuter l'action sur ${name} ?`;
+
+    switch (service) {
+      case "alarm_disarm":
+        prompt = `Désarmer ${name} ?`;
+        break;
+
+      case "alarm_arm_away":
+        prompt = `Armer complètement ${name} ?`;
+        break;
+
+      case "alarm_arm_home":
+        prompt = `Activer le partiel A sur ${name} ?`;
+        break;
+
+      case "alarm_arm_night":
+        prompt = `Activer le partiel B sur ${name} ?`;
+        break;
+
+      default:
+        break;
+    }
+
+    if (
+      this._config.confirm_actions &&
+      !window.confirm(prompt)
+    ) {
+      return;
+    }
+
+    await this._hass.callService(
+      "alarm_control_panel",
+      service,
+      {
+        entity_id: this._config.entity,
+      }
+    );
   }
-  _areaRows(stateObj) {
-    if (!this._config.show_areas) return "";
-    const areas = stateObj?.attributes?.areas;
-    if (!areas || typeof areas !== "object") return "";
-    const rows = Object.entries(areas).map(([id,a]) => `<div class="area"><span class="area-name">${this._escapeHtml(a?.name || `Area ${id}`)}</span><span class="area-state">${this._escapeHtml(String(a?.mode_name ?? a?.mode ?? "Unknown"))}</span></div>`).join("");
-    return rows ? `<div class="areas"><div class="section-title">Areas</div>${rows}</div>` : "";
+
+  _renderTabs() {
+    const tabs = [
+      {
+        id: "system",
+        label: "Système",
+      },
+      {
+        id: "areas",
+        label: "Secteurs",
+      },
+      {
+        id: "zones",
+        label: "Détecteurs",
+      },
+    ];
+
+    return `
+      <div class="tabs">
+        ${tabs
+          .map(
+            (tab) => `
+              <button
+                type="button"
+                class="tab ${
+                  this._activeTab === tab.id ? "active" : ""
+                }"
+                data-tab="${this._escapeHtml(tab.id)}"
+              >
+                ${this._escapeHtml(tab.label)}
+              </button>
+            `
+          )
+          .join("")}
+      </div>
+    `;
   }
+
+  _renderSystem() {
+    const alarm = this._getAlarmEntity();
+    const state = alarm?.state || "unknown";
+
+    const areas = this._getAreas();
+    const zones = this._getNormalZones();
+    const tampers = this._getTamperZones();
+
+    const activeZones = zones.filter(
+      (zone) => zone.state === "on"
+    ).length;
+
+    const activeTampers = tampers.filter(
+      (zone) => zone.state === "on"
+    ).length;
+
+    const controls = this._config.show_controls
+      ? `
+        <div class="alarm-controls">
+          <button
+            type="button"
+            class="control-button"
+            data-service="alarm_disarm"
+          >
+            <ha-icon icon="mdi:lock-open-variant"></ha-icon>
+            <span>Désarmer</span>
+          </button>
+
+          <button
+            type="button"
+            class="control-button"
+            data-service="alarm_arm_home"
+          >
+            <ha-icon icon="mdi:shield-home"></ha-icon>
+            <span>Partiel A</span>
+          </button>
+
+          <button
+            type="button"
+            class="control-button"
+            data-service="alarm_arm_night"
+          >
+            <ha-icon icon="mdi:weather-night"></ha-icon>
+            <span>Partiel B</span>
+          </button>
+
+          <button
+            type="button"
+            class="control-button primary"
+            data-service="alarm_arm_away"
+          >
+            <ha-icon icon="mdi:lock"></ha-icon>
+            <span>Armement total</span>
+          </button>
+        </div>
+      `
+      : "";
+
+    return `
+      <div class="system-view">
+        <div class="system-panel">
+          <div class="system-state ${this._stateClass(state)}">
+            ${this._escapeHtml(this._stateLabel(state))}
+          </div>
+
+          <ha-icon
+            class="system-icon ${this._stateClass(state)}"
+            icon="${this._escapeHtml(this._stateIcon(state))}"
+          ></ha-icon>
+
+          <div class="system-summary">
+            ${
+              areas.length
+                ? `${areas.length} secteur${areas.length > 1 ? "s" : ""}`
+                : "Aucun secteur"
+            }
+            ·
+            ${
+              zones.length
+                ? `${zones.length} détecteur${zones.length > 1 ? "s" : ""}`
+                : "Aucun détecteur"
+            }
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-card">
+            <ha-icon icon="mdi:shield-home-outline"></ha-icon>
+            <div>
+              <div class="summary-value">${areas.length}</div>
+              <div class="summary-label">Secteurs</div>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <ha-icon icon="mdi:motion-sensor"></ha-icon>
+            <div>
+              <div class="summary-value">${zones.length}</div>
+              <div class="summary-label">
+                Détecteurs
+                ${
+                  activeZones
+                    ? `<span class="warning"> · ${activeZones} actif${
+                        activeZones > 1 ? "s" : ""
+                      }</span>`
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <ha-icon icon="mdi:shield-alert-outline"></ha-icon>
+            <div>
+              <div class="summary-value">${tampers.length}</div>
+              <div class="summary-label">
+                Autoprotections
+                ${
+                  activeTampers
+                    ? `<span class="danger"> · ${activeTampers} en défaut</span>`
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+
+        ${controls}
+      </div>
+    `;
+  }
+
+  _renderAreas() {
+    const areas = this._getAreas();
+    const zones = this._getZones();
+
+    if (!areas.length) {
+      return `
+        <div class="empty-state">
+          <ha-icon icon="mdi:shield-home-outline"></ha-icon>
+          <div>Aucun secteur SPC disponible.</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="list">
+        ${areas
+          .map((area) => {
+            const areaZones = zones.filter(
+              (zone) =>
+                String(zone.areaId) === String(area.id)
+            );
+
+            const normalZones = areaZones.filter(
+              (zone) =>
+                zone.zoneType !== "tamper" &&
+                zone.deviceClass !== "tamper"
+            );
+
+            const tampers = areaZones.filter(
+              (zone) =>
+                zone.zoneType === "tamper" ||
+                zone.deviceClass === "tamper"
+            );
+
+            const activeZones = normalZones.filter(
+              (zone) => zone.state === "on"
+            ).length;
+
+            const activeTampers = tampers.filter(
+              (zone) => zone.state === "on"
+            ).length;
+
+            const mode =
+              area.modeName ??
+              area.mode ??
+              "unknown";
+
+            return `
+              <div class="area-card">
+                <div class="area-card-header">
+                  <div class="area-card-title">
+                    ${this._escapeHtml(area.name)}
+                  </div>
+
+                  <div class="badge ${this._modeClass(mode)}">
+                    ${this._escapeHtml(this._modeLabel(mode))}
+                  </div>
+                </div>
+
+                <div class="area-lock">
+                  <ha-icon
+                    class="${this._modeClass(mode)}"
+                    icon="${
+                      this._modeClass(mode) === "ok"
+                        ? "mdi:lock-open-variant"
+                        : "mdi:lock"
+                    }"
+                  ></ha-icon>
+                </div>
+
+                <div class="area-meta">
+                  <span>
+                    ${normalZones.length}
+                    détecteur${normalZones.length > 1 ? "s" : ""}
+                  </span>
+
+                  ${
+                    activeZones
+                      ? `<span class="warning">
+                          ${activeZones} actif${activeZones > 1 ? "s" : ""}
+                        </span>`
+                      : `<span class="ok">Au repos</span>`
+                  }
+
+                  ${
+                    activeTampers
+                      ? `<span class="danger">
+                          Autoprotection
+                        </span>`
+                      : ""
+                  }
+                </div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  _renderZoneRow(zone) {
+    const stateInfo = this._zoneStateInfo(zone);
+
+    return `
+      <div class="zone-row">
+        <div class="zone-icon ${stateInfo.className}">
+          <ha-icon icon="${this._escapeHtml(this._zoneIcon(zone))}"></ha-icon>
+        </div>
+
+        <div class="zone-main">
+          <div class="zone-name">
+            ${this._escapeHtml(zone.name)}
+          </div>
+
+          <div class="zone-area">
+            ${this._escapeHtml(this._areaName(zone.areaId))}
+          </div>
+        </div>
+
+        <div class="zone-state ${stateInfo.className}">
+          ${this._escapeHtml(stateInfo.label)}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderZones() {
+    const zones = this._getNormalZones();
+    const tampers = this._getTamperZones();
+
+    if (!zones.length && !tampers.length) {
+      return `
+        <div class="empty-state">
+          <ha-icon icon="mdi:motion-sensor-off"></ha-icon>
+          <div>Aucune zone SPC découverte.</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="zones-view">
+        ${
+          zones.length
+            ? `
+              <div class="group-title">
+                Détecteurs
+                <span>${zones.length}</span>
+              </div>
+
+              <div class="zone-list">
+                ${zones
+                  .map((zone) => this._renderZoneRow(zone))
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          tampers.length
+            ? `
+              <div class="group-title tamper-title">
+                Autoprotections
+                <span>${tampers.length}</span>
+              </div>
+
+              <div class="zone-list tamper-list">
+                ${tampers
+                  .map((zone) => this._renderZoneRow(zone))
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  _renderActiveView() {
+    switch (this._activeTab) {
+      case "areas":
+        return this._renderAreas();
+
+      case "zones":
+        return this._renderZones();
+
+      case "system":
+      default:
+        return this._renderSystem();
+    }
+  }
+
+  _styles() {
+    return `
+      <style>
+        :host {
+          display: block;
+        }
+
+        ha-card {
+          overflow: hidden;
+          padding: 0;
+        }
+
+        .card {
+          padding: 20px;
+        }
+
+        .header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 10px;
+        }
+
+        .title {
+          font-size: 24px;
+          line-height: 1.2;
+          font-weight: 600;
+        }
+
+        .entity {
+          margin-top: 4px;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+        }
+
+        .tabs {
+          display: flex;
+          gap: 22px;
+          overflow-x: auto;
+          border-bottom: 1px solid var(--divider-color);
+          margin: 0 -20px 20px;
+          padding: 0 20px;
+        }
+
+        .tab {
+          appearance: none;
+          border: 0;
+          border-bottom: 3px solid transparent;
+          background: transparent;
+          color: var(--secondary-text-color);
+          cursor: pointer;
+          font: inherit;
+          font-weight: 600;
+          padding: 12px 0 10px;
+          white-space: nowrap;
+        }
+
+        .tab:hover {
+          color: var(--primary-text-color);
+        }
+
+        .tab.active {
+          color: var(--primary-color);
+          border-bottom-color: var(--primary-color);
+        }
+
+        .system-panel {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 250px;
+          padding: 24px;
+          border-radius: 14px;
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.08)
+          );
+        }
+
+        .system-state {
+          font-size: 22px;
+          font-weight: 700;
+          text-align: center;
+        }
+
+        .system-icon {
+          --mdc-icon-size: 130px;
+          margin: 22px 0;
+        }
+
+        .system-summary {
+          color: var(--secondary-text-color);
+          text-align: center;
+        }
+
+        .summary-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 14px;
+        }
+
+        .summary-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: 0;
+          padding: 14px;
+          border: 1px solid var(--divider-color);
+          border-radius: 12px;
+        }
+
+        .summary-card ha-icon {
+          --mdc-icon-size: 30px;
+          flex: 0 0 auto;
+        }
+
+        .summary-value {
+          font-size: 20px;
+          font-weight: 700;
+        }
+
+        .summary-label {
+          color: var(--secondary-text-color);
+          font-size: 12px;
+        }
+
+        .alarm-controls {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 18px;
+        }
+
+        .control-button {
+          appearance: none;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          min-height: 76px;
+          padding: 10px;
+          border: 1px solid var(--divider-color);
+          border-radius: 12px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          font: inherit;
+        }
+
+        .control-button:hover {
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.08)
+          );
+        }
+
+        .control-button.primary {
+          border-color: var(--primary-color);
+          color: var(--primary-color);
+        }
+
+        .control-button ha-icon {
+          --mdc-icon-size: 27px;
+        }
+
+        .list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .area-card {
+          padding: 18px;
+          border-radius: 14px;
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.08)
+          );
+        }
+
+        .area-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .area-card-title {
+          font-size: 18px;
+          font-weight: 700;
+        }
+
+        .badge {
+          font-weight: 700;
+        }
+
+        .area-lock {
+          display: flex;
+          justify-content: center;
+          padding: 18px 0;
+        }
+
+        .area-lock ha-icon {
+          --mdc-icon-size: 74px;
+        }
+
+        .area-meta {
+          display: flex;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 8px 18px;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+        }
+
+        .zones-view {
+          display: grid;
+          gap: 12px;
+        }
+
+        .group-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 2px;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .group-title span {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 5px;
+          border-radius: 9px;
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.12)
+          );
+          font-size: 10px;
+        }
+
+        .tamper-title {
+          margin-top: 16px;
+        }
+
+        .zone-list {
+          display: grid;
+          gap: 7px;
+        }
+
+        .zone-row {
+          display: grid;
+          grid-template-columns: 46px minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 12px;
+          min-height: 52px;
+          padding: 8px 12px;
+          border-radius: 10px;
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.08)
+          );
+        }
+
+        .zone-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border: 2px solid currentColor;
+          border-radius: 50%;
+        }
+
+        .zone-icon ha-icon {
+          --mdc-icon-size: 22px;
+        }
+
+        .zone-main {
+          min-width: 0;
+        }
+
+        .zone-name {
+          overflow: hidden;
+          font-weight: 600;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .zone-area {
+          overflow: hidden;
+          margin-top: 2px;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .zone-state {
+          font-weight: 700;
+          text-align: right;
+          white-space: nowrap;
+        }
+
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          min-height: 180px;
+          color: var(--secondary-text-color);
+          text-align: center;
+        }
+
+        .empty-state ha-icon {
+          --mdc-icon-size: 54px;
+        }
+
+        .ok {
+          color: var(--success-color, #4caf50);
+        }
+
+        .warning {
+          color: var(--warning-color, #ff9800);
+        }
+
+        .danger {
+          color: var(--error-color, #f44336);
+        }
+
+        .muted {
+          color: var(--secondary-text-color);
+        }
+
+        @media (max-width: 700px) {
+          .card {
+            padding: 16px;
+          }
+
+          .tabs {
+            margin-left: -16px;
+            margin-right: -16px;
+            padding-left: 16px;
+            padding-right: 16px;
+          }
+
+          .summary-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .alarm-controls {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .system-panel {
+            min-height: 210px;
+          }
+
+          .system-icon {
+            --mdc-icon-size: 105px;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .zone-row {
+            grid-template-columns: 40px minmax(0, 1fr);
+          }
+
+          .zone-state {
+            grid-column: 2;
+            text-align: left;
+            font-size: 12px;
+          }
+        }
+      </style>
+    `;
+  }
+
   _render() {
-    if (!this._config || !this._hass) return;
-    const stateObj = this._hass.states[this._config.entity];
-    if (!stateObj) { this.innerHTML = `<ha-card><div class="card-content">Entity not found: ${this._escapeHtml(this._config.entity)}</div></ha-card>`; return; }
-    const title = this._config.name || stateObj.attributes.friendly_name || "SPC FlexC";
-    const controls = this._config.show_controls ? `<div class="controls"><mwc-button class="disarm" outlined>Disarm</mwc-button><mwc-button class="arm" raised>Full Set</mwc-button></div>` : "";
-    this.innerHTML = `<ha-card><style>ha-card{overflow:hidden}.wrap{padding:16px}.header{display:flex;justify-content:space-between;gap:16px;align-items:center}.title{font-size:20px;font-weight:600}.state{font-weight:600;white-space:nowrap}.entity{margin-top:4px;color:var(--secondary-text-color);font-size:12px}.areas{margin-top:18px;border-top:1px solid var(--divider-color);padding-top:12px}.section-title{font-size:12px;text-transform:uppercase;color:var(--secondary-text-color);margin-bottom:6px}.area{display:flex;justify-content:space-between;gap:16px;padding:7px 0}.area-name{font-weight:500}.area-state{color:var(--secondary-text-color)}.controls{display:flex;gap:12px;margin-top:18px}.controls mwc-button{flex:1}</style><div class="wrap"><div class="header"><div><div class="title">${this._escapeHtml(title)}</div><div class="entity">${this._escapeHtml(this._config.entity)}</div></div><div class="state">${this._escapeHtml(this._stateLabel(stateObj.state))}</div></div>${this._areaRows(stateObj)}${controls}</div></ha-card>`;
-    this.querySelector(".disarm")?.addEventListener("click",()=>this._callAlarmService("alarm_disarm"));
-    this.querySelector(".arm")?.addEventListener("click",()=>this._callAlarmService("alarm_arm_away"));
+    if (!this._config || !this._hass) {
+      return;
+    }
+
+    const stateObj = this._getAlarmEntity();
+
+    if (!stateObj) {
+      this.innerHTML = `
+        <ha-card>
+          <div style="padding:16px">
+            Entity not found:
+            ${this._escapeHtml(this._config.entity)}
+          </div>
+        </ha-card>
+      `;
+      return;
+    }
+
+    const title =
+      this._config.name ||
+      stateObj.attributes.friendly_name ||
+      "SPC FlexC";
+
+    this.innerHTML = `
+      <ha-card>
+        ${this._styles()}
+
+        <div class="card">
+          <div class="header">
+            <div>
+              <div class="title">
+                ${this._escapeHtml(title)}
+              </div>
+
+              <div class="entity">
+                ${this._escapeHtml(this._config.entity)}
+              </div>
+            </div>
+          </div>
+
+          ${this._renderTabs()}
+
+          <div class="content">
+            ${this._renderActiveView()}
+          </div>
+        </div>
+      </ha-card>
+    `;
+
+    this.querySelectorAll("[data-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._activeTab = button.dataset.tab;
+        this._render();
+      });
+    });
+
+    this.querySelectorAll("[data-service]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._callAlarmService(button.dataset.service);
+      });
+    });
   }
 }
 
 class SpcFlexCCardEditor extends HTMLElement {
-  setConfig(config){this._config={...config};this._render();}
-  set hass(hass){this._hass=hass;this._render();}
-  _changed(){
-    const config={...this._config,entity:this.querySelector("#entity")?.value||"",name:this.querySelector("#name")?.value||undefined,show_areas:Boolean(this.querySelector("#show_areas")?.checked),show_controls:Boolean(this.querySelector("#show_controls")?.checked),confirm_actions:Boolean(this.querySelector("#confirm_actions")?.checked)};
-    this._config=config; this.dispatchEvent(new CustomEvent("config-changed",{detail:{config},bubbles:true,composed:true}));
+  setConfig(config) {
+    this._config = {
+      show_controls: true,
+      confirm_actions: true,
+      ...config,
+    };
+
+    this._render();
   }
-  _render(){
-    if(!this._config||!this._hass)return;
-    const opts=Object.keys(this._hass.states).filter(id=>id.startsWith("alarm_control_panel.")).map(id=>`<option value="${id}" ${id===this._config.entity?"selected":""}>${id}</option>`).join("");
-    this.innerHTML=`<style>.editor{display:grid;gap:14px}label{display:grid;gap:6px}input,select{box-sizing:border-box;width:100%;padding:8px}.toggle{display:flex;align-items:center;gap:8px}</style><div class="editor"><label>Alarm entity<select id="entity"><option value="">Select an entity</option>${opts}</select></label><label>Card name<input id="name" type="text" value="${this._config.name||""}" placeholder="SPC FlexC"></label><label class="toggle"><input id="show_areas" type="checkbox" ${this._config.show_areas!==false?"checked":""}>Show areas</label><label class="toggle"><input id="show_controls" type="checkbox" ${this._config.show_controls!==false?"checked":""}>Show alarm controls</label><label class="toggle"><input id="confirm_actions" type="checkbox" ${this._config.confirm_actions!==false?"checked":""}>Confirm arm/disarm actions</label></div>`;
-    this.querySelectorAll("input,select").forEach(el=>{el.addEventListener("change",()=>this._changed());el.addEventListener("input",()=>this._changed());});
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  _changed() {
+    const config = {
+      ...this._config,
+
+      entity:
+        this.querySelector("#entity")?.value || "",
+
+      name:
+        this.querySelector("#name")?.value || undefined,
+
+      show_controls: Boolean(
+        this.querySelector("#show_controls")?.checked
+      ),
+
+      confirm_actions: Boolean(
+        this.querySelector("#confirm_actions")?.checked
+      ),
+    };
+
+    this._config = config;
+
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  _render() {
+    if (!this._config || !this._hass) {
+      return;
+    }
+
+    const options = Object.keys(this._hass.states)
+      .filter((id) =>
+        id.startsWith("alarm_control_panel.")
+      )
+      .map((id) => {
+        const stateObj = this._hass.states[id];
+        const name =
+          stateObj?.attributes?.friendly_name || id;
+
+        return `
+          <option
+            value="${this._escapeHtml(id)}"
+            ${
+              id === this._config.entity
+                ? "selected"
+                : ""
+            }
+          >
+            ${this._escapeHtml(name)} (${this._escapeHtml(id)})
+          </option>
+        `;
+      })
+      .join("");
+
+    this.innerHTML = `
+      <style>
+        .editor {
+          display: grid;
+          gap: 16px;
+        }
+
+        label {
+          display: grid;
+          gap: 6px;
+        }
+
+        input,
+        select {
+          box-sizing: border-box;
+          width: 100%;
+          padding: 9px;
+        }
+
+        .toggle {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+        }
+
+        .toggle input {
+          width: auto;
+        }
+
+        .help {
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          line-height: 1.4;
+        }
+      </style>
+
+      <div class="editor">
+        <label>
+          Entité d'alarme
+
+          <select id="entity">
+            <option value="">
+              Sélectionner une entité
+            </option>
+
+            ${options}
+          </select>
+        </label>
+
+        <label>
+          Nom de la carte
+
+          <input
+            id="name"
+            type="text"
+            value="${this._escapeHtml(
+              this._config.name || ""
+            )}"
+            placeholder="SPC FlexC"
+          >
+        </label>
+
+        <label class="toggle">
+          <input
+            id="show_controls"
+            type="checkbox"
+            ${
+              this._config.show_controls !== false
+                ? "checked"
+                : ""
+            }
+          >
+
+          Afficher les commandes d'alarme
+        </label>
+
+        <label class="toggle">
+          <input
+            id="confirm_actions"
+            type="checkbox"
+            ${
+              this._config.confirm_actions !== false
+                ? "checked"
+                : ""
+            }
+          >
+
+          Confirmer les actions d'armement/désarmement
+        </label>
+
+        <div class="help">
+          Les secteurs sont récupérés depuis l'entité d'alarme.
+          Les détecteurs SPC sont découverts automatiquement parmi
+          les binary_sensor possédant les attributs zone_id, area_id
+          et spc_zone_type. Les diagnostics système ne possédant pas
+          ces attributs sont ignorés.
+        </div>
+      </div>
+    `;
+
+    this.querySelectorAll("input, select").forEach((element) => {
+      element.addEventListener(
+        "change",
+        () => this._changed()
+      );
+
+      element.addEventListener(
+        "input",
+        () => this._changed()
+      );
+    });
   }
 }
-if(!customElements.get("spc-flexc-card"))customElements.define("spc-flexc-card",SpcFlexCCard);
-if(!customElements.get("spc-flexc-card-editor"))customElements.define("spc-flexc-card-editor",SpcFlexCCardEditor);
-window.customCards=window.customCards||[];
-window.customCards.push({type:"spc-flexc-card",name:"SPC FlexC Card",description:"Alarm control card for the SPC FlexC Home Assistant integration.",preview:true,documentationURL:"https://github.com/minimicro34/ha-spc-flexc-card"});
-console.info(`%c SPC FLEXC CARD %c ${CARD_VERSION} `,"color:white;background:#1565c0;font-weight:700;","color:#1565c0;background:white;font-weight:700;");
+
+if (!customElements.get("spc-flexc-card")) {
+  customElements.define(
+    "spc-flexc-card",
+    SpcFlexCCard
+  );
+}
+
+if (!customElements.get("spc-flexc-card-editor")) {
+  customElements.define(
+    "spc-flexc-card-editor",
+    SpcFlexCCardEditor
+  );
+}
+
+window.customCards = window.customCards || [];
+
+if (
+  !window.customCards.some(
+    (card) => card.type === "spc-flexc-card"
+  )
+) {
+  window.customCards.push({
+    type: "spc-flexc-card",
+    name: "SPC FlexC Card",
+    description:
+      "Visual alarm control card for the SPC FlexC Home Assistant integration.",
+    preview: true,
+    documentationURL:
+      "https://github.com/minimicro34/ha-spc-flexc-card",
+  });
+}
+
+console.info(
+  `%c SPC FLEXC CARD %c ${CARD_VERSION} `,
+  "color:white;background:#1565c0;font-weight:700;",
+  "color:#1565c0;background:white;font-weight:700;"
+);
