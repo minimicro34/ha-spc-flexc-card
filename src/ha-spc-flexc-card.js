@@ -6,19 +6,23 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   static getStubConfig(hass) {
-    const entity = Object.keys(hass.states).find((id) =>
-      id.startsWith("alarm_control_panel.")
+    const alarmEntities = Object.entries(hass.states)
+      .filter(([id]) => id.startsWith("alarm_control_panel."));
+
+    const systemEntity = alarmEntities.find(([, stateObj]) =>
+      stateObj?.attributes?.areas && typeof stateObj.attributes.areas === "object"
     );
 
+    const entity = systemEntity?.[0] || alarmEntities[0]?.[0];
     return entity ? { entity } : {};
   }
 
   setConfig(config) {
     if (!config.entity) {
-      throw new Error(
-        "SPC FlexC Card requires an alarm_control_panel entity."
-      );
+      throw new Error("SPC FlexC Card requires an alarm_control_panel entity.");
     }
+
+    const entityChanged = this._config?.entity !== config.entity;
 
     this._config = {
       name: "SPC FlexC",
@@ -31,16 +35,31 @@ class SpcFlexCCard extends HTMLElement {
       this._activeTab = "system";
     }
 
+    if (entityChanged) {
+      this._diagnosticScope = null;
+      this._diagnosticScopeForEntity = null;
+      this._diagnosticScopeLoading = false;
+    }
+
     this._render();
+    this._ensureDiagnosticScope();
   }
 
   set hass(hass) {
     this._hass = hass;
     this._render();
+    this._ensureDiagnosticScope();
   }
 
   getCardSize() {
     return 8;
+  }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      min_columns: 6,
+    };
   }
 
   _escapeHtml(value) {
@@ -50,6 +69,26 @@ class SpcFlexCCard extends HTMLElement {
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  _locale() {
+    return this._hass?.locale?.language || navigator.language || undefined;
+  }
+
+  _formatDateTime(value) {
+    if (!value) return null;
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+
+    try {
+      return new Intl.DateTimeFormat(this._locale(), {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(date);
+    } catch {
+      return date.toLocaleString(this._locale());
+    }
   }
 
   _stateLabel(state) {
@@ -147,17 +186,11 @@ class SpcFlexCCard extends HTMLElement {
   _modeClass(mode) {
     const normalized = String(mode ?? "").toLowerCase();
 
-    if (
-      normalized === "unset" ||
-      normalized === "disarmed"
-    ) {
+    if (normalized === "unset" || normalized === "disarmed") {
       return "ok";
     }
 
-    if (
-      normalized.includes("set") ||
-      normalized.includes("armed")
-    ) {
+    if (normalized.includes("set") || normalized.includes("armed")) {
       return "warning";
     }
 
@@ -201,17 +234,29 @@ class SpcFlexCCard extends HTMLElement {
       });
   }
 
-  /*
-   * A Home Assistant entity is considered an SPC zone only if all three
-   * SPC zone attributes are present:
-   *
-   *   zone_id
-   *   area_id
-   *   spc_zone_type
-   *
-   * This deliberately excludes system diagnostics such as RF jamming,
-   * modem faults, X-BUS faults, FlexC connection, etc.
-   */
+  _getAreaAlarmEntity(areaId) {
+    if (!this._hass) {
+      return null;
+    }
+
+    const id = String(areaId);
+
+    return (
+      Object.entries(this._hass.states)
+        .filter(([entityId]) =>
+          entityId.startsWith("alarm_control_panel.")
+        )
+        .map(([entityId, stateObj]) => ({
+          entityId,
+          stateObj,
+        }))
+        .find(
+          ({ stateObj }) =>
+            String(stateObj?.attributes?.area_id ?? "") === id
+        ) || null
+    );
+  }
+
   _getZones() {
     if (!this._hass) {
       return [];
@@ -243,8 +288,12 @@ class SpcFlexCCard extends HTMLElement {
           state: stateObj.state,
           zoneId: attrs.zone_id,
           areaId: attrs.area_id,
-          zoneType: String(attrs.spc_zone_type || "").toLowerCase(),
-          deviceClass: String(attrs.device_class || "").toLowerCase(),
+          zoneType: String(
+            attrs.spc_zone_type || ""
+          ).toLowerCase(),
+          deviceClass: String(
+            attrs.device_class || ""
+          ).toLowerCase(),
           name:
             attrs.friendly_name ||
             entityId.split(".").pop() ||
@@ -253,7 +302,8 @@ class SpcFlexCCard extends HTMLElement {
           status: attrs.status,
           procState: attrs.proc_state,
           alarmState: attrs.alarm_state,
-          actuationsSinceLastRead: attrs.actuations_since_last_read,
+          actuationsSinceLastRead:
+            attrs.actuations_since_last_read,
           raw: stateObj,
         };
       })
@@ -301,6 +351,7 @@ class SpcFlexCCard extends HTMLElement {
 
   _areaName(areaId) {
     const id = String(areaId);
+
     const area = this._getAreas().find(
       (candidate) => String(candidate.id) === id
     );
@@ -425,19 +476,434 @@ class SpcFlexCCard extends HTMLElement {
     }
   }
 
-  async _callAlarmService(service) {
-    if (!this._hass || !this._config) {
+  _lastAreaChange(stateObj) {
+    if (!stateObj) {
+      return "";
+    }
+
+    const stableArmedStates = new Set([
+      "armed_away",
+      "armed_home",
+      "armed_night",
+      "armed_vacation",
+      "armed_custom_bypass",
+    ]);
+
+    let prefix;
+    let label;
+
+    if (stateObj.state === "disarmed") {
+      prefix = "last_unset";
+      label = "Dernier désarmement";
+    } else if (stableArmedStates.has(stateObj.state)) {
+      prefix = "last_set";
+      label = "Dernier armement";
+    } else {
+      return "";
+    }
+
+    const attrs = stateObj.attributes || {};
+
+    const formattedTime = this._formatDateTime(
+      attrs[`${prefix}_time`]
+    );
+
+    if (!formattedTime) {
+      return "";
+    }
+
+    const rawUserName =
+      attrs[`${prefix}_user_name`];
+
+    const rawUserId =
+      attrs[`${prefix}_user_id`];
+
+    const userName =
+      rawUserName != null
+        ? String(rawUserName).trim()
+        : "";
+
+    const userId =
+      rawUserId != null
+        ? String(rawUserId).trim()
+        : "";
+
+    const user = userName || userId || null;
+
+    return `
+      <div class="last-change">
+        <div class="last-change-label">
+          ${this._escapeHtml(label)}
+        </div>
+
+        <div class="last-change-value">
+          ${this._escapeHtml(formattedTime)}
+          ${
+            user
+              ? `<span class="last-change-user"> · ${this._escapeHtml(
+                  user
+                )}</span>`
+              : ""
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  async _ensureDiagnosticScope() {
+    if (
+      !this._hass?.callWS ||
+      !this._config?.entity
+    ) {
       return;
     }
 
-    const state = this._getAlarmEntity();
+    if (this._diagnosticScopeLoading) {
+      return;
+    }
+
+    if (
+      this._diagnosticScopeForEntity ===
+        this._config.entity &&
+      this._diagnosticScope
+    ) {
+      return;
+    }
+
+    this._diagnosticScopeLoading = true;
+
+    try {
+      const entries = await this._hass.callWS({
+        type: "config/entity_registry/list",
+      });
+
+      const selected = entries.find(
+        (entry) =>
+          entry.entity_id === this._config.entity
+      );
+
+      if (!selected) {
+        this._diagnosticScope = {
+          method: "none",
+          entityIds: null,
+        };
+      } else if (selected.device_id) {
+        const entityIds = new Set(
+          entries
+            .filter(
+              (entry) =>
+                entry.device_id &&
+                entry.device_id === selected.device_id
+            )
+            .map((entry) => entry.entity_id)
+        );
+
+        this._diagnosticScope = {
+          method: "device",
+          entityIds,
+        };
+      } else if (selected.config_entry_id) {
+        const entityIds = new Set(
+          entries
+            .filter((entry) => {
+              if (
+                entry.config_entry_id !==
+                selected.config_entry_id
+              ) {
+                return false;
+              }
+
+              if (
+                selected.platform &&
+                entry.platform &&
+                entry.platform !== selected.platform
+              ) {
+                return false;
+              }
+
+              return true;
+            })
+            .map((entry) => entry.entity_id)
+        );
+
+        this._diagnosticScope = {
+          method: "config_entry",
+          entityIds,
+        };
+      } else {
+        this._diagnosticScope = {
+          method: "none",
+          entityIds: null,
+        };
+      }
+    } catch (error) {
+      console.warn(
+        "SPC FlexC Card: unable to read entity registry for diagnostics",
+        error
+      );
+
+      this._diagnosticScope = {
+        method: "unavailable",
+        entityIds: null,
+      };
+    } finally {
+      this._diagnosticScopeForEntity =
+        this._config.entity;
+
+      this._diagnosticScopeLoading = false;
+      this._render();
+    }
+  }
+
+  _getSystemDiagnostics() {
+    const scope = this._diagnosticScope;
+
+    if (!scope?.entityIds) {
+      return {
+        scopeAvailable: false,
+        connection: null,
+        faults: [],
+      };
+    }
+
+    const diagnostics = [];
+
+    for (const entityId of scope.entityIds) {
+      if (
+        !entityId.startsWith("binary_sensor.")
+      ) {
+        continue;
+      }
+
+      const stateObj =
+        this._hass.states[entityId];
+
+      if (!stateObj) {
+        continue;
+      }
+
+      const attrs = stateObj.attributes || {};
+
+      if (
+        attrs.zone_id !== undefined ||
+        attrs.area_id !== undefined ||
+        attrs.spc_zone_type !== undefined
+      ) {
+        continue;
+      }
+
+      diagnostics.push({
+        entityId,
+        stateObj,
+        deviceClass: String(
+          attrs.device_class || ""
+        ).toLowerCase(),
+        friendlyName: String(
+          attrs.friendly_name || entityId
+        ),
+      });
+    }
+
+    const connection =
+      diagnostics.find((item) => {
+        if (
+          item.deviceClass !== "connectivity"
+        ) {
+          return false;
+        }
+
+        return /flex\s*c|flexc/i.test(
+          `${item.entityId} ${item.friendlyName}`
+        );
+      }) || null;
+
+    const faults = diagnostics
+      .filter(
+        (item) =>
+          item.deviceClass === "problem" &&
+          item.stateObj.state === "on"
+      )
+      .sort((a, b) =>
+        a.friendlyName.localeCompare(
+          b.friendlyName,
+          this._locale()
+        )
+      );
+
+    return {
+      scopeAvailable: true,
+      connection,
+      faults,
+    };
+  }
+
+  _renderSystemDiagnostics() {
+    const diagnostics =
+      this._getSystemDiagnostics();
+
+    let connectionHtml;
+
+    if (!diagnostics.scopeAvailable) {
+      connectionHtml = `
+        <div class="diagnostic-row">
+          <ha-icon
+            class="muted"
+            icon="mdi:lan-disconnect"
+          ></ha-icon>
+
+          <div class="diagnostic-main">
+            <div class="diagnostic-name">
+              Connexion FlexC
+            </div>
+
+            <div class="diagnostic-detail muted">
+              État non déterminé
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (!diagnostics.connection) {
+      connectionHtml = `
+        <div class="diagnostic-row">
+          <ha-icon
+            class="muted"
+            icon="mdi:lan"
+          ></ha-icon>
+
+          <div class="diagnostic-main">
+            <div class="diagnostic-name">
+              Connexion FlexC
+            </div>
+
+            <div class="diagnostic-detail muted">
+              Entité non exposée
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      const connected =
+        diagnostics.connection.stateObj.state ===
+        "on";
+
+      connectionHtml = `
+        <div class="diagnostic-row">
+          <ha-icon
+            class="${connected ? "ok" : "danger"}"
+            icon="${
+              connected
+                ? "mdi:lan-connect"
+                : "mdi:lan-disconnect"
+            }"
+          ></ha-icon>
+
+          <div class="diagnostic-main">
+            <div class="diagnostic-name">
+              Connexion FlexC
+            </div>
+
+            <div class="diagnostic-detail ${
+              connected ? "ok" : "danger"
+            }">
+              ${
+                connected
+                  ? "Connectée"
+                  : "Déconnectée"
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const faultsHtml =
+      !diagnostics.scopeAvailable
+        ? `
+          <div class="fault-ok muted">
+            <ha-icon
+              icon="mdi:information-outline"
+            ></ha-icon>
+            <span>
+              Défauts système non déterminés :
+              métadonnées d’entité indisponibles.
+            </span>
+          </div>
+        `
+        : diagnostics.faults.length
+          ? `
+            <div class="fault-header danger">
+              <ha-icon
+                icon="mdi:alert-circle"
+              ></ha-icon>
+
+              <span>Défauts actifs</span>
+
+              <span class="fault-count">
+                ${diagnostics.faults.length}
+              </span>
+            </div>
+
+            <div class="fault-list">
+              ${diagnostics.faults
+                .map(
+                  (fault) => `
+                    <div class="fault-row danger">
+                      <ha-icon
+                        icon="mdi:alert"
+                      ></ha-icon>
+
+                      <span>
+                        ${this._escapeHtml(
+                          fault.friendlyName
+                        )}
+                      </span>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+          `
+          : `
+            <div class="fault-ok ok">
+              <ha-icon
+                icon="mdi:check-circle"
+              ></ha-icon>
+              <span>Aucun défaut actif</span>
+            </div>
+          `;
+
+    return `
+      <div class="diagnostics-block">
+        <div class="group-title">
+          Système
+        </div>
+
+        ${connectionHtml}
+        ${faultsHtml}
+      </div>
+    `;
+  }
+
+  async _callAlarmService(
+    service,
+    entityId = this._config?.entity,
+    displayName = null
+  ) {
+    if (!this._hass || !entityId) {
+      return;
+    }
+
+    const stateObj =
+      this._hass.states[entityId];
 
     const name =
-      state?.attributes?.friendly_name ||
-      this._config.name ||
-      this._config.entity;
+      displayName ||
+      stateObj?.attributes?.friendly_name ||
+      this._config?.name ||
+      entityId;
 
-    let prompt = `Exécuter l'action sur ${name} ?`;
+    let prompt =
+      `Exécuter l'action sur ${name} ?`;
 
     switch (service) {
       case "alarm_disarm":
@@ -449,11 +915,13 @@ class SpcFlexCCard extends HTMLElement {
         break;
 
       case "alarm_arm_home":
-        prompt = `Activer le partiel A sur ${name} ?`;
+        prompt =
+          `Activer le partiel A sur ${name} ?`;
         break;
 
       case "alarm_arm_night":
-        prompt = `Activer le partiel B sur ${name} ?`;
+        prompt =
+          `Activer le partiel B sur ${name} ?`;
         break;
 
       default:
@@ -471,7 +939,7 @@ class SpcFlexCCard extends HTMLElement {
       "alarm_control_panel",
       service,
       {
-        entity_id: this._config.entity,
+        entity_id: entityId,
       }
     );
   }
@@ -500,9 +968,13 @@ class SpcFlexCCard extends HTMLElement {
               <button
                 type="button"
                 class="tab ${
-                  this._activeTab === tab.id ? "active" : ""
+                  this._activeTab === tab.id
+                    ? "active"
+                    : ""
                 }"
-                data-tab="${this._escapeHtml(tab.id)}"
+                data-tab="${this._escapeHtml(
+                  tab.id
+                )}"
               >
                 ${this._escapeHtml(tab.label)}
               </button>
@@ -529,70 +1001,73 @@ class SpcFlexCCard extends HTMLElement {
       (zone) => zone.state === "on"
     ).length;
 
-    const controls = this._config.show_controls
-      ? `
-        <div class="alarm-controls">
-          <button
-            type="button"
-            class="control-button"
-            data-service="alarm_disarm"
-          >
-            <ha-icon icon="mdi:lock-open-variant"></ha-icon>
-            <span>Désarmer</span>
-          </button>
+    const controls =
+      this._config.show_controls
+        ? `
+          <div class="alarm-controls system-controls">
+            <button
+              type="button"
+              class="control-button"
+              data-service="alarm_disarm"
+              data-entity="${this._escapeHtml(
+                this._config.entity
+              )}"
+            >
+              <ha-icon
+                icon="mdi:lock-open-variant"
+              ></ha-icon>
+              <span>Désarmer</span>
+            </button>
 
-          <button
-            type="button"
-            class="control-button"
-            data-service="alarm_arm_home"
-          >
-            <ha-icon icon="mdi:shield-home"></ha-icon>
-            <span>Partiel A</span>
-          </button>
-
-          <button
-            type="button"
-            class="control-button"
-            data-service="alarm_arm_night"
-          >
-            <ha-icon icon="mdi:weather-night"></ha-icon>
-            <span>Partiel B</span>
-          </button>
-
-          <button
-            type="button"
-            class="control-button primary"
-            data-service="alarm_arm_away"
-          >
-            <ha-icon icon="mdi:lock"></ha-icon>
-            <span>Armement total</span>
-          </button>
-        </div>
-      `
-      : "";
+            <button
+              type="button"
+              class="control-button primary"
+              data-service="alarm_arm_away"
+              data-entity="${this._escapeHtml(
+                this._config.entity
+              )}"
+            >
+              <ha-icon icon="mdi:lock"></ha-icon>
+              <span>Armement total</span>
+            </button>
+          </div>
+        `
+        : "";
 
     return `
       <div class="system-view">
         <div class="system-panel">
-          <div class="system-state ${this._stateClass(state)}">
-            ${this._escapeHtml(this._stateLabel(state))}
+          <div class="system-state ${this._stateClass(
+            state
+          )}">
+            ${this._escapeHtml(
+              this._stateLabel(state)
+            )}
           </div>
 
           <ha-icon
-            class="system-icon ${this._stateClass(state)}"
-            icon="${this._escapeHtml(this._stateIcon(state))}"
+            class="system-icon ${this._stateClass(
+              state
+            )}"
+            icon="${this._escapeHtml(
+              this._stateIcon(state)
+            )}"
           ></ha-icon>
 
           <div class="system-summary">
             ${
               areas.length
-                ? `${areas.length} secteur${areas.length > 1 ? "s" : ""}`
+                ? `${areas.length} secteur${
+                    areas.length > 1 ? "s" : ""
+                  }`
                 : "Aucun secteur"
             }
             ·
             ${
               zones.length
-                ? `${zones.length} détecteur${zones.length > 1 ? "s" : ""}`
+                ? `${zones.length} détecteur${
+                    zones.length > 1 ? "s" : ""
+                  }`
                 : "Aucun détecteur"
             }
           </div>
@@ -600,17 +1075,31 @@ class SpcFlexCCard extends HTMLElement {
 
         <div class="summary-grid">
           <div class="summary-card">
-            <ha-icon icon="mdi:shield-home-outline"></ha-icon>
+            <ha-icon
+              icon="mdi:shield-home-outline"
+            ></ha-icon>
+
             <div>
-              <div class="summary-value">${areas.length}</div>
-              <div class="summary-label">Secteurs</div>
+              <div class="summary-value">
+                ${areas.length}
+              </div>
+
+              <div class="summary-label">
+                Secteurs
+              </div>
             </div>
           </div>
 
           <div class="summary-card">
-            <ha-icon icon="mdi:motion-sensor"></ha-icon>
+            <ha-icon
+              icon="mdi:motion-sensor"
+            ></ha-icon>
+
             <div>
-              <div class="summary-value">${zones.length}</div>
+              <div class="summary-value">
+                ${zones.length}
+              </div>
+
               <div class="summary-label">
                 Détecteurs
                 ${
@@ -625,9 +1114,15 @@ class SpcFlexCCard extends HTMLElement {
           </div>
 
           <div class="summary-card">
-            <ha-icon icon="mdi:shield-alert-outline"></ha-icon>
+            <ha-icon
+              icon="mdi:shield-alert-outline"
+            ></ha-icon>
+
             <div>
-              <div class="summary-value">${tampers.length}</div>
+              <div class="summary-value">
+                ${tampers.length}
+              </div>
+
               <div class="summary-label">
                 Autoprotections
                 ${
@@ -640,7 +1135,134 @@ class SpcFlexCCard extends HTMLElement {
           </div>
         </div>
 
+        ${this._renderSystemDiagnostics()}
         ${controls}
+      </div>
+    `;
+  }
+
+  _renderAreaControls(area, areaEntity) {
+    if (
+      !this._config.show_controls ||
+      !areaEntity
+    ) {
+      return "";
+    }
+
+    const {
+      entityId,
+      stateObj,
+    } = areaEntity;
+
+    const attrs =
+      stateObj?.attributes || {};
+
+    const state =
+      stateObj?.state || "unknown";
+
+    const stableArmedStates = new Set([
+      "armed_away",
+      "armed_home",
+      "armed_night",
+      "armed_vacation",
+      "armed_custom_bypass",
+    ]);
+
+    const buttons = [];
+
+    if (state === "disarmed") {
+      buttons.push(`
+        <button
+          type="button"
+          class="control-button primary"
+          data-service="alarm_arm_away"
+          data-entity="${this._escapeHtml(
+            entityId
+          )}"
+          data-name="${this._escapeHtml(
+            area.name
+          )}"
+        >
+          <ha-icon icon="mdi:lock"></ha-icon>
+          <span>Armer</span>
+        </button>
+      `);
+
+      if (
+        attrs.partset_a_enabled === true
+      ) {
+        buttons.push(`
+          <button
+            type="button"
+            class="control-button"
+            data-service="alarm_arm_home"
+            data-entity="${this._escapeHtml(
+              entityId
+            )}"
+            data-name="${this._escapeHtml(
+              area.name
+            )}"
+          >
+            <ha-icon
+              icon="mdi:shield-home"
+            ></ha-icon>
+            <span>Partiel A</span>
+          </button>
+        `);
+      }
+
+      if (
+        attrs.partset_b_enabled === true
+      ) {
+        buttons.push(`
+          <button
+            type="button"
+            class="control-button"
+            data-service="alarm_arm_night"
+            data-entity="${this._escapeHtml(
+              entityId
+            )}"
+            data-name="${this._escapeHtml(
+              area.name
+            )}"
+          >
+            <ha-icon
+              icon="mdi:weather-night"
+            ></ha-icon>
+            <span>Partiel B</span>
+          </button>
+        `);
+      }
+    } else if (
+      stableArmedStates.has(state)
+    ) {
+      buttons.push(`
+        <button
+          type="button"
+          class="control-button"
+          data-service="alarm_disarm"
+          data-entity="${this._escapeHtml(
+            entityId
+          )}"
+          data-name="${this._escapeHtml(
+            area.name
+          )}"
+        >
+          <ha-icon
+            icon="mdi:lock-open-variant"
+          ></ha-icon>
+          <span>Désarmer</span>
+        </button>
+      `);
+    }
+
+    if (!buttons.length) {
+      return "";
+    }
+
+    return `
+      <div class="area-controls">
+        ${buttons.join("")}
       </div>
     `;
   }
@@ -652,91 +1274,155 @@ class SpcFlexCCard extends HTMLElement {
     if (!areas.length) {
       return `
         <div class="empty-state">
-          <ha-icon icon="mdi:shield-home-outline"></ha-icon>
-          <div>Aucun secteur SPC disponible.</div>
+          <ha-icon
+            icon="mdi:shield-home-outline"
+          ></ha-icon>
+          <div>
+            Aucun secteur SPC disponible.
+          </div>
         </div>
       `;
     }
 
     return `
-      <div class="list">
+      <div class="list area-list">
         ${areas
           .map((area) => {
-            const areaZones = zones.filter(
-              (zone) =>
-                String(zone.areaId) === String(area.id)
-            );
+            const areaZones =
+              zones.filter(
+                (zone) =>
+                  String(zone.areaId) ===
+                  String(area.id)
+              );
 
-            const normalZones = areaZones.filter(
-              (zone) =>
-                zone.zoneType !== "tamper" &&
-                zone.deviceClass !== "tamper"
-            );
+            const normalZones =
+              areaZones.filter(
+                (zone) =>
+                  zone.zoneType !== "tamper" &&
+                  zone.deviceClass !== "tamper"
+              );
 
-            const tampers = areaZones.filter(
-              (zone) =>
-                zone.zoneType === "tamper" ||
-                zone.deviceClass === "tamper"
-            );
+            const tampers =
+              areaZones.filter(
+                (zone) =>
+                  zone.zoneType === "tamper" ||
+                  zone.deviceClass === "tamper"
+              );
 
-            const activeZones = normalZones.filter(
-              (zone) => zone.state === "on"
-            ).length;
+            const activeZones =
+              normalZones.filter(
+                (zone) => zone.state === "on"
+              ).length;
 
-            const activeTampers = tampers.filter(
-              (zone) => zone.state === "on"
-            ).length;
+            const activeTampers =
+              tampers.filter(
+                (zone) => zone.state === "on"
+              ).length;
+
+            const areaEntity =
+              this._getAreaAlarmEntity(
+                area.id
+              );
 
             const mode =
+              areaEntity?.stateObj?.attributes
+                ?.mode_name ??
               area.modeName ??
+              areaEntity?.stateObj?.attributes
+                ?.mode ??
               area.mode ??
               "unknown";
+
+            const renderedState =
+              areaEntity?.stateObj?.state ||
+              null;
+
+            const stateClass =
+              renderedState
+                ? this._stateClass(
+                    renderedState
+                  )
+                : this._modeClass(mode);
+
+            const icon =
+              renderedState
+                ? this._stateIcon(
+                    renderedState
+                  )
+                : stateClass === "ok"
+                  ? "mdi:lock-open-variant"
+                  : "mdi:lock";
+
+            const label =
+              renderedState
+                ? this._stateLabel(
+                    renderedState
+                  ).replace(
+                    /^Désarmée$/,
+                    "Désarmé"
+                  )
+                : this._modeLabel(mode);
 
             return `
               <div class="area-card">
                 <div class="area-card-header">
                   <div class="area-card-title">
-                    ${this._escapeHtml(area.name)}
+                    ${this._escapeHtml(
+                      area.name
+                    )}
                   </div>
 
-                  <div class="badge ${this._modeClass(mode)}">
-                    ${this._escapeHtml(this._modeLabel(mode))}
+                  <div class="badge ${stateClass}">
+                    ${this._escapeHtml(
+                      label
+                    )}
                   </div>
                 </div>
 
                 <div class="area-lock">
                   <ha-icon
-                    class="${this._modeClass(mode)}"
-                    icon="${
-                      this._modeClass(mode) === "ok"
-                        ? "mdi:lock-open-variant"
-                        : "mdi:lock"
-                    }"
+                    class="${stateClass}"
+                    icon="${this._escapeHtml(
+                      icon
+                    )}"
                   ></ha-icon>
                 </div>
 
                 <div class="area-meta">
                   <span>
                     ${normalZones.length}
-                    détecteur${normalZones.length > 1 ? "s" : ""}
+                    détecteur${
+                      normalZones.length > 1
+                        ? "s"
+                        : ""
+                    }
                   </span>
 
                   ${
                     activeZones
-                      ? `<span class="warning">
-                          ${activeZones} actif${activeZones > 1 ? "s" : ""}
-                        </span>`
+                      ? `<span class="warning">${activeZones} actif${
+                          activeZones > 1
+                            ? "s"
+                            : ""
+                        }</span>`
                       : `<span class="ok">Au repos</span>`
                   }
 
                   ${
                     activeTampers
-                      ? `<span class="danger">
-                          Autoprotection
-                        </span>`
+                      ? `<span class="danger">Autoprotection</span>`
                       : ""
                   }
                 </div>
+
+                ${this._lastAreaChange(
+                  areaEntity?.stateObj
+                )}
+
+                ${this._renderAreaControls(
+                  area,
+                  areaEntity
+                )}
               </div>
             `;
           })
@@ -746,12 +1432,19 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   _renderZoneRow(zone) {
-    const stateInfo = this._zoneStateInfo(zone);
+    const stateInfo =
+      this._zoneStateInfo(zone);
 
     return `
       <div class="zone-row">
-        <div class="zone-icon ${stateInfo.className}">
-          <ha-icon icon="${this._escapeHtml(this._zoneIcon(zone))}"></ha-icon>
+        <div class="zone-icon ${
+          stateInfo.className
+        }">
+          <ha-icon
+            icon="${this._escapeHtml(
+              this._zoneIcon(zone)
+            )}"
+          ></ha-icon>
         </div>
 
         <div class="zone-main">
@@ -760,12 +1453,18 @@ class SpcFlexCCard extends HTMLElement {
           </div>
 
           <div class="zone-area">
-            ${this._escapeHtml(this._areaName(zone.areaId))}
+            ${this._escapeHtml(
+              this._areaName(zone.areaId)
+            )}
           </div>
         </div>
 
-        <div class="zone-state ${stateInfo.className}">
-          ${this._escapeHtml(stateInfo.label)}
+        <div class="zone-state ${
+          stateInfo.className
+        }">
+          ${this._escapeHtml(
+            stateInfo.label
+          )}
         </div>
       </div>
     `;
@@ -775,11 +1474,19 @@ class SpcFlexCCard extends HTMLElement {
     const zones = this._getNormalZones();
     const tampers = this._getTamperZones();
 
-    if (!zones.length && !tampers.length) {
+    if (
+      !zones.length &&
+      !tampers.length
+    ) {
       return `
         <div class="empty-state">
-          <ha-icon icon="mdi:motion-sensor-off"></ha-icon>
-          <div>Aucune zone SPC découverte.</div>
+          <ha-icon
+            icon="mdi:motion-sensor-off"
+          ></ha-icon>
+
+          <div>
+            Aucune zone SPC découverte.
+          </div>
         </div>
       `;
     }
@@ -796,7 +1503,9 @@ class SpcFlexCCard extends HTMLElement {
 
               <div class="zone-list">
                 ${zones
-                  .map((zone) => this._renderZoneRow(zone))
+                  .map((zone) =>
+                    this._renderZoneRow(zone)
+                  )
                   .join("")}
               </div>
             `
@@ -813,7 +1522,9 @@ class SpcFlexCCard extends HTMLElement {
 
               <div class="zone-list tamper-list">
                 ${tampers
-                  .map((zone) => this._renderZoneRow(zone))
+                  .map((zone) =>
+                    this._renderZoneRow(zone)
+                  )
                   .join("")}
               </div>
             `
@@ -842,15 +1553,17 @@ class SpcFlexCCard extends HTMLElement {
       <style>
         :host {
           display: block;
+          width: 100%;
         }
 
         ha-card {
           overflow: hidden;
           padding: 0;
+          width: 100%;
         }
 
         .card {
-          padding: 20px;
+          padding: 22px;
         }
 
         .header {
@@ -875,11 +1588,11 @@ class SpcFlexCCard extends HTMLElement {
 
         .tabs {
           display: flex;
-          gap: 22px;
+          gap: 28px;
           overflow-x: auto;
           border-bottom: 1px solid var(--divider-color);
-          margin: 0 -20px 20px;
-          padding: 0 20px;
+          margin: 0 -22px 20px;
+          padding: 0 22px;
         }
 
         .tab {
@@ -909,8 +1622,8 @@ class SpcFlexCCard extends HTMLElement {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          min-height: 250px;
-          padding: 24px;
+          min-height: 260px;
+          padding: 28px;
           border-radius: 14px;
           background: var(
             --secondary-background-color,
@@ -925,7 +1638,7 @@ class SpcFlexCCard extends HTMLElement {
         }
 
         .system-icon {
-          --mdc-icon-size: 130px;
+          --mdc-icon-size: 140px;
           margin: 22px 0;
         }
 
@@ -936,9 +1649,12 @@ class SpcFlexCCard extends HTMLElement {
 
         .summary-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
-          margin-top: 14px;
+          grid-template-columns: repeat(
+            3,
+            minmax(0, 1fr)
+          );
+          gap: 12px;
+          margin-top: 16px;
         }
 
         .summary-card {
@@ -946,7 +1662,7 @@ class SpcFlexCCard extends HTMLElement {
           align-items: center;
           gap: 12px;
           min-width: 0;
-          padding: 14px;
+          padding: 15px;
           border: 1px solid var(--divider-color);
           border-radius: 12px;
         }
@@ -968,9 +1684,25 @@ class SpcFlexCCard extends HTMLElement {
 
         .alarm-controls {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
           margin-top: 18px;
+        }
+
+        .system-controls {
+          grid-template-columns: repeat(
+            2,
+            minmax(0, 1fr)
+          );
+        }
+
+        .area-controls {
+          display: grid;
+          grid-template-columns: repeat(
+            auto-fit,
+            minmax(120px, 1fr)
+          );
+          gap: 10px;
+          margin-top: 16px;
         }
 
         .control-button {
@@ -980,7 +1712,7 @@ class SpcFlexCCard extends HTMLElement {
           align-items: center;
           justify-content: center;
           gap: 7px;
-          min-height: 76px;
+          min-height: 70px;
           padding: 10px;
           border: 1px solid var(--divider-color);
           border-radius: 12px;
@@ -1006,9 +1738,105 @@ class SpcFlexCCard extends HTMLElement {
           --mdc-icon-size: 27px;
         }
 
+        .diagnostics-block {
+          margin-top: 18px;
+          padding: 16px;
+          border: 1px solid var(--divider-color);
+          border-radius: 14px;
+        }
+
+        .diagnostic-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 4px 0 12px;
+        }
+
+        .diagnostic-row > ha-icon {
+          --mdc-icon-size: 28px;
+        }
+
+        .diagnostic-main {
+          min-width: 0;
+        }
+
+        .diagnostic-name {
+          font-weight: 600;
+        }
+
+        .diagnostic-detail {
+          margin-top: 2px;
+          font-size: 12px;
+        }
+
+        .fault-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 8px;
+          padding-top: 12px;
+          border-top: 1px solid var(--divider-color);
+          font-weight: 700;
+        }
+
+        .fault-count {
+          margin-left: auto;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 22px;
+          height: 22px;
+          padding: 0 6px;
+          border-radius: 11px;
+          background: color-mix(
+            in srgb,
+            currentColor 14%,
+            transparent
+          );
+        }
+
+        .fault-list {
+          display: grid;
+          gap: 7px;
+          margin-top: 10px;
+        }
+
+        .fault-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: 9px;
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.08)
+          );
+        }
+
+        .fault-row ha-icon {
+          --mdc-icon-size: 20px;
+        }
+
+        .fault-ok {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 8px;
+          padding-top: 12px;
+          border-top: 1px solid var(--divider-color);
+          font-weight: 600;
+        }
+
         .list {
           display: grid;
-          gap: 12px;
+          gap: 14px;
+        }
+
+        .area-list {
+          grid-template-columns: repeat(
+            auto-fit,
+            minmax(280px, 1fr)
+          );
         }
 
         .area-card {
@@ -1039,11 +1867,11 @@ class SpcFlexCCard extends HTMLElement {
         .area-lock {
           display: flex;
           justify-content: center;
-          padding: 18px 0;
+          padding: 18px 0 10px;
         }
 
         .area-lock ha-icon {
-          --mdc-icon-size: 74px;
+          --mdc-icon-size: 78px;
         }
 
         .area-meta {
@@ -1053,6 +1881,28 @@ class SpcFlexCCard extends HTMLElement {
           gap: 8px 18px;
           color: var(--secondary-text-color);
           font-size: 12px;
+        }
+
+        .last-change {
+          margin-top: 15px;
+          padding-top: 12px;
+          border-top: 1px solid var(--divider-color);
+          text-align: center;
+        }
+
+        .last-change-label {
+          color: var(--secondary-text-color);
+          font-size: 12px;
+        }
+
+        .last-change-value {
+          margin-top: 4px;
+          font-size: 13px;
+          color: var(--primary-text-color);
+        }
+
+        .last-change-user {
+          color: var(--secondary-text-color);
         }
 
         .zones-view {
@@ -1098,7 +1948,8 @@ class SpcFlexCCard extends HTMLElement {
 
         .zone-row {
           display: grid;
-          grid-template-columns: 46px minmax(0, 1fr) auto;
+          grid-template-columns:
+            46px minmax(0, 1fr) auto;
           align-items: center;
           gap: 12px;
           min-height: 52px;
@@ -1166,15 +2017,24 @@ class SpcFlexCCard extends HTMLElement {
         }
 
         .ok {
-          color: var(--success-color, #4caf50);
+          color: var(
+            --success-color,
+            #4caf50
+          );
         }
 
         .warning {
-          color: var(--warning-color, #ff9800);
+          color: var(
+            --warning-color,
+            #ff9800
+          );
         }
 
         .danger {
-          color: var(--error-color, #f44336);
+          color: var(
+            --error-color,
+            #f44336
+          );
         }
 
         .muted {
@@ -1197,22 +2057,30 @@ class SpcFlexCCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
 
-          .alarm-controls {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+          .system-controls {
+            grid-template-columns: repeat(
+              2,
+              minmax(0, 1fr)
+            );
+          }
+
+          .area-list {
+            grid-template-columns: 1fr;
           }
 
           .system-panel {
-            min-height: 210px;
+            min-height: 220px;
           }
 
           .system-icon {
-            --mdc-icon-size: 105px;
+            --mdc-icon-size: 110px;
           }
         }
 
         @media (max-width: 420px) {
           .zone-row {
-            grid-template-columns: 40px minmax(0, 1fr);
+            grid-template-columns:
+              40px minmax(0, 1fr);
           }
 
           .zone-state {
@@ -1220,27 +2088,39 @@ class SpcFlexCCard extends HTMLElement {
             text-align: left;
             font-size: 12px;
           }
+
+          .system-controls {
+            grid-template-columns:
+              1fr 1fr;
+          }
         }
       </style>
     `;
   }
 
   _render() {
-    if (!this._config || !this._hass) {
+    if (
+      !this._config ||
+      !this._hass
+    ) {
       return;
     }
 
-    const stateObj = this._getAlarmEntity();
+    const stateObj =
+      this._getAlarmEntity();
 
     if (!stateObj) {
       this.innerHTML = `
         <ha-card>
           <div style="padding:16px">
             Entity not found:
-            ${this._escapeHtml(this._config.entity)}
+            ${this._escapeHtml(
+              this._config.entity
+            )}
           </div>
         </ha-card>
       `;
+
       return;
     }
 
@@ -1261,7 +2141,9 @@ class SpcFlexCCard extends HTMLElement {
               </div>
 
               <div class="entity">
-                ${this._escapeHtml(this._config.entity)}
+                ${this._escapeHtml(
+                  this._config.entity
+                )}
               </div>
             </div>
           </div>
@@ -1275,17 +2157,34 @@ class SpcFlexCCard extends HTMLElement {
       </ha-card>
     `;
 
-    this.querySelectorAll("[data-tab]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._activeTab = button.dataset.tab;
-        this._render();
-      });
+    this.querySelectorAll(
+      "[data-tab]"
+    ).forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          this._activeTab =
+            button.dataset.tab;
+
+          this._render();
+        }
+      );
     });
 
-    this.querySelectorAll("[data-service]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._callAlarmService(button.dataset.service);
-      });
+    this.querySelectorAll(
+      "[data-service]"
+    ).forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          this._callAlarmService(
+            button.dataset.service,
+            button.dataset.entity ||
+              this._config.entity,
+            button.dataset.name || null
+          );
+        }
+      );
     });
   }
 }
@@ -1320,59 +2219,85 @@ class SpcFlexCCardEditor extends HTMLElement {
       ...this._config,
 
       entity:
-        this.querySelector("#entity")?.value || "",
+        this.querySelector("#entity")
+          ?.value || "",
 
       name:
-        this.querySelector("#name")?.value || undefined,
+        this.querySelector("#name")
+          ?.value || undefined,
 
       show_controls: Boolean(
-        this.querySelector("#show_controls")?.checked
+        this.querySelector(
+          "#show_controls"
+        )?.checked
       ),
 
       confirm_actions: Boolean(
-        this.querySelector("#confirm_actions")?.checked
+        this.querySelector(
+          "#confirm_actions"
+        )?.checked
       ),
     };
 
     this._config = config;
 
     this.dispatchEvent(
-      new CustomEvent("config-changed", {
-        detail: { config },
-        bubbles: true,
-        composed: true,
-      })
+      new CustomEvent(
+        "config-changed",
+        {
+          detail: {
+            config,
+          },
+          bubbles: true,
+          composed: true,
+        }
+      )
     );
   }
 
   _render() {
-    if (!this._config || !this._hass) {
+    if (
+      !this._config ||
+      !this._hass
+    ) {
       return;
     }
 
-    const options = Object.keys(this._hass.states)
-      .filter((id) =>
-        id.startsWith("alarm_control_panel.")
-      )
-      .map((id) => {
-        const stateObj = this._hass.states[id];
-        const name =
-          stateObj?.attributes?.friendly_name || id;
+    const options =
+      Object.keys(this._hass.states)
+        .filter((id) =>
+          id.startsWith(
+            "alarm_control_panel."
+          )
+        )
+        .map((id) => {
+          const stateObj =
+            this._hass.states[id];
 
-        return `
-          <option
-            value="${this._escapeHtml(id)}"
-            ${
-              id === this._config.entity
-                ? "selected"
-                : ""
-            }
-          >
-            ${this._escapeHtml(name)} (${this._escapeHtml(id)})
-          </option>
-        `;
-      })
-      .join("");
+          const name =
+            stateObj?.attributes
+              ?.friendly_name || id;
+
+          return `
+            <option
+              value="${this._escapeHtml(
+                id
+              )}"
+              ${
+                id ===
+                this._config.entity
+                  ? "selected"
+                  : ""
+              }
+            >
+              ${this._escapeHtml(
+                name
+              )}
+              (${this._escapeHtml(id)})
+            </option>
+          `;
+        })
+        .join("");
 
     this.innerHTML = `
       <style>
@@ -1441,7 +2366,8 @@ class SpcFlexCCardEditor extends HTMLElement {
             id="show_controls"
             type="checkbox"
             ${
-              this._config.show_controls !== false
+              this._config
+                .show_controls !== false
                 ? "checked"
                 : ""
             }
@@ -1455,7 +2381,8 @@ class SpcFlexCCardEditor extends HTMLElement {
             id="confirm_actions"
             type="checkbox"
             ${
-              this._config.confirm_actions !== false
+              this._config
+                .confirm_actions !== false
                 ? "checked"
                 : ""
             }
@@ -1468,13 +2395,16 @@ class SpcFlexCCardEditor extends HTMLElement {
           Les secteurs sont récupérés depuis l'entité d'alarme.
           Les détecteurs SPC sont découverts automatiquement parmi
           les binary_sensor possédant les attributs zone_id, area_id
-          et spc_zone_type. Les diagnostics système ne possédant pas
-          ces attributs sont ignorés.
+          et spc_zone_type. Les diagnostics système sont rattachés à
+          la même centrale via le registre d'entités Home Assistant
+          quand celui-ci est disponible.
         </div>
       </div>
     `;
 
-    this.querySelectorAll("input, select").forEach((element) => {
+    this.querySelectorAll(
+      "input, select"
+    ).forEach((element) => {
       element.addEventListener(
         "change",
         () => this._changed()
@@ -1488,25 +2418,35 @@ class SpcFlexCCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get("spc-flexc-card")) {
+if (
+  !customElements.get(
+    "spc-flexc-card"
+  )
+) {
   customElements.define(
     "spc-flexc-card",
     SpcFlexCCard
   );
 }
 
-if (!customElements.get("spc-flexc-card-editor")) {
+if (
+  !customElements.get(
+    "spc-flexc-card-editor"
+  )
+) {
   customElements.define(
     "spc-flexc-card-editor",
     SpcFlexCCardEditor
   );
 }
 
-window.customCards = window.customCards || [];
+window.customCards =
+  window.customCards || [];
 
 if (
   !window.customCards.some(
-    (card) => card.type === "spc-flexc-card"
+    (card) =>
+      card.type === "spc-flexc-card"
   )
 ) {
   window.customCards.push({
