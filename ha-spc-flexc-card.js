@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.2.0-dev";
+const CARD_VERSION = "1.0.0";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
