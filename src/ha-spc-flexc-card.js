@@ -302,6 +302,8 @@ class SpcFlexCCard extends HTMLElement {
           status: attrs.status,
           procState: attrs.proc_state,
           alarmState: attrs.alarm_state,
+          eventTamper: attrs.event_tamper,
+          lastEvent: attrs.last_event,
           actuationsSinceLastRead:
             attrs.actuations_since_last_read,
           raw: stateObj,
@@ -415,14 +417,21 @@ class SpcFlexCCard extends HTMLElement {
 
   _zoneStateInfo(zone) {
     const active = zone.state === "on";
+    const tamperActive =
+      zone.eventTamper === true ||
+      (
+        (zone.zoneType === "tamper" ||
+          zone.deviceClass === "tamper") &&
+        active
+      );
 
     if (
       zone.zoneType === "tamper" ||
       zone.deviceClass === "tamper"
     ) {
       return {
-        label: active ? "AUTOPROTECTION" : "Normal",
-        className: active ? "danger" : "ok",
+        label: tamperActive ? "AUTOPROTECTION" : "Normal",
+        className: tamperActive ? "danger" : "ok",
       };
     }
 
@@ -573,9 +582,14 @@ class SpcFlexCCard extends HTMLElement {
     this._diagnosticScopeLoading = true;
 
     try {
-      const entries = await this._hass.callWS({
-        type: "config/entity_registry/list",
-      });
+      const [entries, devices] = await Promise.all([
+        this._hass.callWS({
+          type: "config/entity_registry/list",
+        }),
+        this._hass.callWS({
+          type: "config/device_registry/list",
+        }).catch(() => []),
+      ]);
 
       const selected = entries.find(
         (entry) =>
@@ -586,29 +600,27 @@ class SpcFlexCCard extends HTMLElement {
         this._diagnosticScope = {
           method: "none",
           entityIds: null,
+          integrationEntityIds: null,
+          selected: null,
+          device: null,
         };
-      } else if (selected.device_id) {
-        const entityIds = new Set(
-          entries
-            .filter(
-              (entry) =>
-                entry.device_id &&
-                entry.device_id === selected.device_id
-            )
-            .map((entry) => entry.entity_id)
-        );
-
-        this._diagnosticScope = {
-          method: "device",
-          entityIds,
-        };
-      } else if (selected.config_entry_id) {
-        const entityIds = new Set(
+      } else {
+        const integrationEntityIds = new Set(
           entries
             .filter((entry) => {
-              if (
-                entry.config_entry_id !==
-                selected.config_entry_id
+              if (selected.config_entry_id) {
+                if (
+                  entry.config_entry_id !==
+                  selected.config_entry_id
+                ) {
+                  return false;
+                }
+              } else if (selected.device_id) {
+                if (entry.device_id !== selected.device_id) {
+                  return false;
+                }
+              } else if (
+                entry.entity_id !== selected.entity_id
               ) {
                 return false;
               }
@@ -626,25 +638,49 @@ class SpcFlexCCard extends HTMLElement {
             .map((entry) => entry.entity_id)
         );
 
+        let entityIds = integrationEntityIds;
+        let method = "config_entry";
+
+        if (selected.device_id) {
+          entityIds = new Set(
+            entries
+              .filter(
+                (entry) =>
+                  entry.device_id &&
+                  entry.device_id === selected.device_id
+              )
+              .map((entry) => entry.entity_id)
+          );
+          method = "device";
+        }
+
+        const device = Array.isArray(devices)
+          ? devices.find(
+              (candidate) =>
+                candidate.id === selected.device_id
+            ) || null
+          : null;
+
         this._diagnosticScope = {
-          method: "config_entry",
+          method,
           entityIds,
-        };
-      } else {
-        this._diagnosticScope = {
-          method: "none",
-          entityIds: null,
+          integrationEntityIds,
+          selected,
+          device,
         };
       }
     } catch (error) {
       console.warn(
-        "SPC FlexC Card: unable to read entity registry for diagnostics",
+        "SPC FlexC Card: unable to read Home Assistant registries for diagnostics",
         error
       );
 
       this._diagnosticScope = {
         method: "unavailable",
         entityIds: null,
+        integrationEntityIds: null,
+        selected: null,
+        device: null,
       };
     } finally {
       this._diagnosticScopeForEntity =
@@ -655,6 +691,40 @@ class SpcFlexCCard extends HTMLElement {
     }
   }
 
+  _scopeEntityIds(includeIntegration = false) {
+    const scope = this._diagnosticScope;
+
+    if (!scope) {
+      return null;
+    }
+
+    if (
+      includeIntegration &&
+      scope.integrationEntityIds
+    ) {
+      return scope.integrationEntityIds;
+    }
+
+    return scope.entityIds || null;
+  }
+
+  _scopedStates(includeIntegration = false) {
+    const ids = this._scopeEntityIds(
+      includeIntegration
+    );
+
+    if (!ids || !this._hass) {
+      return [];
+    }
+
+    return Array.from(ids)
+      .map((entityId) => ({
+        entityId,
+        stateObj: this._hass.states[entityId],
+      }))
+      .filter((item) => Boolean(item.stateObj));
+  }
+
   _getSystemDiagnostics() {
     const scope = this._diagnosticScope;
 
@@ -662,23 +732,15 @@ class SpcFlexCCard extends HTMLElement {
       return {
         scopeAvailable: false,
         connection: null,
+        engineerMode: null,
         faults: [],
       };
     }
 
     const diagnostics = [];
 
-    for (const entityId of scope.entityIds) {
-      if (
-        !entityId.startsWith("binary_sensor.")
-      ) {
-        continue;
-      }
-
-      const stateObj =
-        this._hass.states[entityId];
-
-      if (!stateObj) {
+    for (const { entityId, stateObj } of this._scopedStates()) {
+      if (!entityId.startsWith("binary_sensor.")) {
         continue;
       }
 
@@ -706,9 +768,7 @@ class SpcFlexCCard extends HTMLElement {
 
     const connection =
       diagnostics.find((item) => {
-        if (
-          item.deviceClass !== "connectivity"
-        ) {
+        if (item.deviceClass !== "connectivity") {
           return false;
         }
 
@@ -716,6 +776,13 @@ class SpcFlexCCard extends HTMLElement {
           `${item.entityId} ${item.friendlyName}`
         );
       }) || null;
+
+    const engineerMode =
+      diagnostics.find((item) =>
+        /engineer[_\s-]*mode|installer|installateur/i.test(
+          `${item.entityId} ${item.friendlyName}`
+        )
+      ) || null;
 
     const faults = diagnostics
       .filter(
@@ -733,130 +800,93 @@ class SpcFlexCCard extends HTMLElement {
     return {
       scopeAvailable: true,
       connection,
+      engineerMode,
       faults,
     };
   }
 
   _renderSystemDiagnostics() {
-    const diagnostics =
-      this._getSystemDiagnostics();
+    const diagnostics = this._getSystemDiagnostics();
 
     let connectionHtml;
 
     if (!diagnostics.scopeAvailable) {
       connectionHtml = `
         <div class="diagnostic-row">
-          <ha-icon
-            class="muted"
-            icon="mdi:lan-disconnect"
-          ></ha-icon>
-
+          <ha-icon class="muted" icon="mdi:lan-disconnect"></ha-icon>
           <div class="diagnostic-main">
-            <div class="diagnostic-name">
-              Connexion FlexC
-            </div>
-
-            <div class="diagnostic-detail muted">
-              État non déterminé
-            </div>
+            <div class="diagnostic-name">Connexion FlexC</div>
+            <div class="diagnostic-detail muted">État non déterminé</div>
           </div>
         </div>
       `;
     } else if (!diagnostics.connection) {
       connectionHtml = `
         <div class="diagnostic-row">
-          <ha-icon
-            class="muted"
-            icon="mdi:lan"
-          ></ha-icon>
-
+          <ha-icon class="muted" icon="mdi:lan"></ha-icon>
           <div class="diagnostic-main">
-            <div class="diagnostic-name">
-              Connexion FlexC
-            </div>
-
-            <div class="diagnostic-detail muted">
-              Entité non exposée
-            </div>
+            <div class="diagnostic-name">Connexion FlexC</div>
+            <div class="diagnostic-detail muted">Entité non exposée</div>
           </div>
         </div>
       `;
     } else {
       const connected =
-        diagnostics.connection.stateObj.state ===
-        "on";
+        diagnostics.connection.stateObj.state === "on";
 
       connectionHtml = `
         <div class="diagnostic-row">
           <ha-icon
             class="${connected ? "ok" : "danger"}"
-            icon="${
-              connected
-                ? "mdi:lan-connect"
-                : "mdi:lan-disconnect"
-            }"
+            icon="${connected ? "mdi:lan-connect" : "mdi:lan-disconnect"}"
           ></ha-icon>
-
           <div class="diagnostic-main">
-            <div class="diagnostic-name">
-              Connexion FlexC
-            </div>
-
-            <div class="diagnostic-detail ${
-              connected ? "ok" : "danger"
-            }">
-              ${
-                connected
-                  ? "Connectée"
-                  : "Déconnectée"
-              }
+            <div class="diagnostic-name">Connexion FlexC</div>
+            <div class="diagnostic-detail ${connected ? "ok" : "danger"}">
+              ${connected ? "Connectée" : "Déconnectée"}
             </div>
           </div>
         </div>
       `;
     }
 
+    const engineerHtml =
+      diagnostics.engineerMode?.stateObj?.state === "on"
+        ? `
+          <div class="diagnostic-row engineer-warning">
+            <ha-icon class="warning" icon="mdi:account-hard-hat"></ha-icon>
+            <div class="diagnostic-main">
+              <div class="diagnostic-name warning">Mode ingénieur actif</div>
+              <div class="diagnostic-detail muted">
+                L’état est remonté en temps réel par la centrale.
+              </div>
+            </div>
+          </div>
+        `
+        : "";
+
     const faultsHtml =
       !diagnostics.scopeAvailable
         ? `
           <div class="fault-ok muted">
-            <ha-icon
-              icon="mdi:information-outline"
-            ></ha-icon>
-            <span>
-              Défauts système non déterminés :
-              métadonnées d’entité indisponibles.
-            </span>
+            <ha-icon icon="mdi:information-outline"></ha-icon>
+            <span>Défauts système non déterminés : métadonnées indisponibles.</span>
           </div>
         `
         : diagnostics.faults.length
           ? `
             <div class="fault-header danger">
-              <ha-icon
-                icon="mdi:alert-circle"
-              ></ha-icon>
-
+              <ha-icon icon="mdi:alert-circle"></ha-icon>
               <span>Défauts actifs</span>
-
-              <span class="fault-count">
-                ${diagnostics.faults.length}
-              </span>
+              <span class="fault-count">${diagnostics.faults.length}</span>
             </div>
-
             <div class="fault-list">
               ${diagnostics.faults
                 .map(
                   (fault) => `
                     <div class="fault-row danger">
-                      <ha-icon
-                        icon="mdi:alert"
-                      ></ha-icon>
-
-                      <span>
-                        ${this._escapeHtml(
-                          fault.friendlyName
-                        )}
-                      </span>
+                      <ha-icon icon="mdi:alert"></ha-icon>
+                      <span>${this._escapeHtml(fault.friendlyName)}</span>
                     </div>
                   `
                 )
@@ -865,22 +895,476 @@ class SpcFlexCCard extends HTMLElement {
           `
           : `
             <div class="fault-ok ok">
-              <ha-icon
-                icon="mdi:check-circle"
-              ></ha-icon>
+              <ha-icon icon="mdi:check-circle"></ha-icon>
               <span>Aucun défaut actif</span>
             </div>
           `;
 
     return `
       <div class="diagnostics-block">
-        <div class="group-title">
-          Système
-        </div>
-
+        <div class="group-title">État et défauts</div>
         ${connectionHtml}
+        ${engineerHtml}
         ${faultsHtml}
       </div>
+    `;
+  }
+
+  _valueWithUnit(stateObj) {
+    if (!stateObj) return null;
+
+    const state = String(stateObj.state ?? "").trim();
+    if (!state || ["unknown", "unavailable"].includes(state)) {
+      return null;
+    }
+
+    const unit = String(
+      stateObj.attributes?.unit_of_measurement || ""
+    ).trim();
+
+    return unit ? `${state} ${unit}` : state;
+  }
+
+  _findIntegrationState(patterns) {
+    return (
+      this._scopedStates(true).find(({ entityId, stateObj }) => {
+        const friendlyName =
+          stateObj?.attributes?.friendly_name || "";
+        const haystack = `${entityId} ${friendlyName}`;
+        return patterns.some((pattern) => pattern.test(haystack));
+      }) || null
+    );
+  }
+
+  _technicalLine(label, value, className = "") {
+    if (
+      value === undefined ||
+      value === null ||
+      String(value).trim() === ""
+    ) {
+      return "";
+    }
+
+    return `
+      <div class="technical-row">
+        <div class="technical-label">${this._escapeHtml(label)}</div>
+        <div class="technical-value ${className}">${this._escapeHtml(value)}</div>
+      </div>
+    `;
+  }
+
+  _entityTechnicalLine(label, match, className = "") {
+    return this._technicalLine(
+      label,
+      this._valueWithUnit(match?.stateObj),
+      className
+    );
+  }
+
+  _getFlexcCommunication() {
+    const states = this._scopedStates(true);
+    const atsMap = new Map();
+
+    const numberValue = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const attrValue = (attrs, names) => {
+      for (const name of names) {
+        if (
+          attrs[name] !== undefined &&
+          attrs[name] !== null &&
+          String(attrs[name]).trim() !== ""
+        ) {
+          return attrs[name];
+        }
+      }
+      return null;
+    };
+
+    for (const { entityId, stateObj } of states) {
+      const attrs = stateObj.attributes || {};
+      const atsIdRaw = attrValue(attrs, [
+        "ats_id",
+        "ATS_ID",
+      ]);
+      const atpIdRaw = attrValue(attrs, [
+        "atp_id",
+        "ATP_ID",
+      ]);
+
+      if (atsIdRaw === null && atpIdRaw === null) {
+        continue;
+      }
+
+      const atsId = numberValue(atsIdRaw);
+      const atpId = numberValue(atpIdRaw);
+      const atsKey = atsId !== null ? atsId : String(atsIdRaw ?? "?");
+
+      if (!atsMap.has(atsKey)) {
+        atsMap.set(atsKey, {
+          id: atsIdRaw,
+          name: null,
+          entities: [],
+          atps: new Map(),
+        });
+      }
+
+      const ats = atsMap.get(atsKey);
+      ats.entities.push({ entityId, stateObj });
+
+      const atsName = attrValue(attrs, [
+        "ats_name",
+        "ATS_NAME",
+      ]);
+      if (atsName !== null) {
+        ats.name = String(atsName);
+      }
+
+      if (atpIdRaw === null) {
+        continue;
+      }
+
+      const atpKey = atpId !== null ? atpId : String(atpIdRaw);
+      if (!ats.atps.has(atpKey)) {
+        ats.atps.set(atpKey, {
+          id: atpIdRaw,
+          name: null,
+          entities: [],
+          lastTxOkTimestamp: null,
+          active: null,
+          fault: null,
+          status: null,
+          state: null,
+          connectState: null,
+        });
+      }
+
+      const atp = ats.atps.get(atpKey);
+      atp.entities.push({ entityId, stateObj });
+
+      const atpName = attrValue(attrs, [
+        "atp_name",
+        "ATP_NAME",
+      ]);
+      if (atpName !== null) {
+        atp.name = String(atpName);
+      }
+
+      const lastTx = attrValue(attrs, [
+        "last_tx_ok_timestamp",
+        "LAST_TX_OK_TIMESTAMP",
+      ]);
+      if (lastTx !== null) {
+        atp.lastTxOkTimestamp = lastTx;
+      }
+
+      for (const [target, names] of [
+        ["active", ["active"]],
+        ["fault", ["fault"]],
+        ["status", ["status", "STATUS"]],
+        ["state", ["state", "STATE"]],
+        ["connectState", ["connect_state", "CONNECT_STATE"]],
+      ]) {
+        const value = attrValue(attrs, names);
+        if (value !== null) atp[target] = value;
+      }
+    }
+
+    const atsList = Array.from(atsMap.values()).map((ats) => {
+      if (!ats.name) {
+        const nameEntity = ats.entities.find(({ stateObj }) => {
+          const friendly = String(
+            stateObj.attributes?.friendly_name || ""
+          );
+          return /\bATS\b/i.test(friendly) && !/\bATP\b/i.test(friendly);
+        });
+        const candidate = nameEntity?.stateObj?.attributes?.ats_name;
+        if (candidate) ats.name = String(candidate);
+      }
+
+      ats.atps = Array.from(ats.atps.values()).sort(
+        (a, b) => Number(a.id) - Number(b.id)
+      );
+      return ats;
+    });
+
+    return atsList.sort((a, b) => Number(a.id) - Number(b.id));
+  }
+
+  _atpStateLabel(atp) {
+    if (atp.fault === true || String(atp.fault).toLowerCase() === "true") {
+      return { label: "Défaut", className: "danger" };
+    }
+
+    if (atp.active === true || String(atp.active).toLowerCase() === "true") {
+      return { label: "Actif", className: "ok" };
+    }
+
+    if (atp.active === false || String(atp.active).toLowerCase() === "false") {
+      return { label: "Inactif", className: "muted" };
+    }
+
+    const source = atp.entities
+      .map(({ stateObj }) => this._valueWithUnit(stateObj))
+      .find(Boolean);
+
+    if (source) {
+      return { label: source, className: "" };
+    }
+
+    return null;
+  }
+
+  _renderFlexcCommunication() {
+    const atsList = this._getFlexcCommunication();
+    if (!atsList.length) return "";
+
+    return `
+      <div class="technical-section">
+        <div class="technical-section-title">Communication FlexC</div>
+        <div class="ats-list">
+          ${atsList
+            .map((ats) => {
+              const atsLabel = `ATS ${ats.id ?? "?"}${
+                ats.name ? ` — ${ats.name}` : ""
+              }`;
+
+              return `
+                <div class="ats-card">
+                  <div class="ats-title">${this._escapeHtml(atsLabel)}</div>
+                  ${ats.atps.length
+                    ? `<div class="atp-list">
+                        ${ats.atps
+                          .map((atp) => {
+                            const atpLabel = `ATP ${atp.id ?? "?"}${
+                              atp.name ? ` — ${atp.name}` : ""
+                            }`;
+                            const stateInfo = this._atpStateLabel(atp);
+                            const formattedTx = this._formatDateTime(
+                              atp.lastTxOkTimestamp
+                            );
+
+                            return `
+                              <div class="atp-card">
+                                <div class="atp-title">${this._escapeHtml(atpLabel)}</div>
+                                ${stateInfo
+                                  ? this._technicalLine(
+                                      "État",
+                                      stateInfo.label,
+                                      stateInfo.className
+                                    )
+                                  : ""}
+                                ${this._technicalLine("ATS utilisé", atsLabel)}
+                                ${this._technicalLine(
+                                  "Dernière transmission réussie",
+                                  formattedTx
+                                )}
+                              </div>
+                            `;
+                          })
+                          .join("")}
+                      </div>`
+                    : ""}
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  _getXBusDevices() {
+    const devices = new Map();
+
+    for (const { entityId, stateObj } of this._scopedStates(true)) {
+      const attrs = stateObj.attributes || {};
+      const id = attrs.xbus_device_id;
+
+      if (id === undefined || id === null) {
+        continue;
+      }
+
+      const key = String(id);
+      if (!devices.has(key)) {
+        devices.set(key, {
+          id,
+          name: attrs.xbus_device_name || null,
+          siaAddress: attrs.sia_address ?? null,
+          tamperFault: attrs.tamper_fault ?? null,
+          tamperIsolated: attrs.tamper_isolated ?? null,
+          entities: [],
+        });
+      }
+
+      const device = devices.get(key);
+      device.entities.push({ entityId, stateObj });
+      if (attrs.xbus_device_name) device.name = attrs.xbus_device_name;
+      if (attrs.sia_address !== undefined) device.siaAddress = attrs.sia_address;
+      if (attrs.tamper_fault !== undefined) device.tamperFault = attrs.tamper_fault;
+      if (attrs.tamper_isolated !== undefined) device.tamperIsolated = attrs.tamper_isolated;
+    }
+
+    return Array.from(devices.values()).sort(
+      (a, b) => Number(a.id) - Number(b.id)
+    );
+  }
+
+  _renderXBusDevices() {
+    const devices = this._getXBusDevices();
+    if (!devices.length) return "";
+
+    return `
+      <div class="technical-section">
+        <div class="technical-section-title">X-BUS</div>
+        <div class="xbus-list">
+          ${devices
+            .map((device) => {
+              const title = device.name || `X-BUS ${device.id}`;
+              const fault = device.tamperFault === true;
+              const isolated = device.tamperIsolated === true;
+
+              return `
+                <div class="xbus-card">
+                  <div class="xbus-title">
+                    <span>${this._escapeHtml(title)}</span>
+                    <span class="${fault ? "danger" : "ok"}">
+                      ${fault ? "Défaut" : "OK"}
+                    </span>
+                  </div>
+                  ${this._technicalLine("ID X-BUS", device.id)}
+                  ${this._technicalLine("Adresse SIA", device.siaAddress)}
+                  ${device.tamperFault !== null
+                    ? this._technicalLine(
+                        "Autoprotection",
+                        fault ? "Défaut" : "OK",
+                        fault ? "danger" : "ok"
+                      )
+                    : ""}
+                  ${device.tamperIsolated !== null
+                    ? this._technicalLine(
+                        "Isolement autoprotection",
+                        isolated ? "Isolé" : "Non isolé",
+                        isolated ? "warning" : "ok"
+                      )
+                    : ""}
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderCentralInformation() {
+    const scope = this._diagnosticScope;
+    const device = scope?.device || {};
+
+    const identityLines = [
+      this._technicalLine("Fabricant", device.manufacturer),
+      this._technicalLine("Modèle", device.model || device.model_id),
+      this._technicalLine("Firmware", device.sw_version),
+      this._technicalLine("Matériel", device.hw_version),
+      this._technicalLine("N° de série", device.serial_number),
+    ].join("");
+
+    const acFrequency = this._findIntegrationState([
+      /ac[_\s-]*frequency/i,
+      /fr[ée]quence.*secteur/i,
+    ]);
+    const batteryVoltage = this._findIntegrationState([
+      /battery[_\s-]*voltage/i,
+      /tension.*batterie/i,
+    ]);
+    const auxVoltage = this._findIntegrationState([
+      /aux[_\s-]*voltage/i,
+      /tension.*aux/i,
+    ]);
+    const auxCurrent = this._findIntegrationState([
+      /aux[_\s-]*current/i,
+      /courant.*aux/i,
+    ]);
+
+    const powerLines = [
+      this._entityTechnicalLine("Fréquence secteur", acFrequency),
+      this._entityTechnicalLine("Tension batterie", batteryVoltage),
+      this._entityTechnicalLine("Tension auxiliaire", auxVoltage),
+      this._entityTechnicalLine("Courant auxiliaire", auxCurrent),
+    ].join("");
+
+    const rfEntities = this._scopedStates(true).filter(({ entityId, stateObj }) =>
+      /\brf\b|radio/i.test(
+        `${entityId} ${stateObj.attributes?.friendly_name || ""}`
+      )
+    );
+    const modemEntities = this._scopedStates(true).filter(({ entityId, stateObj }) =>
+      /modem/i.test(
+        `${entityId} ${stateObj.attributes?.friendly_name || ""}`
+      )
+    );
+
+    const renderEntityList = (title, entities) => {
+      const rows = entities
+        .filter(({ stateObj }) => this._valueWithUnit(stateObj) !== null)
+        .map(({ stateObj }) =>
+          this._technicalLine(
+            stateObj.attributes?.friendly_name || "État",
+            this._valueWithUnit(stateObj)
+          )
+        )
+        .join("");
+
+      return rows
+        ? `<div class="technical-section">
+            <div class="technical-section-title">${this._escapeHtml(title)}</div>
+            ${rows}
+          </div>`
+        : "";
+    };
+
+    const identitySection = identityLines
+      ? `<div class="technical-section">
+          <div class="technical-section-title">Centrale</div>
+          ${identityLines}
+        </div>`
+      : "";
+
+    const powerSection = powerLines
+      ? `<div class="technical-section">
+          <div class="technical-section-title">Alimentation</div>
+          ${powerLines}
+        </div>`
+      : "";
+
+    const content = [
+      identitySection,
+      powerSection,
+      this._renderFlexcCommunication(),
+      this._renderXBusDevices(),
+      renderEntityList("RF", rfEntities),
+      renderEntityList("Modem", modemEntities),
+    ].join("");
+
+    if (!content) {
+      return "";
+    }
+
+    return `
+      <details class="central-information">
+        <summary>
+          <span class="details-summary-main">
+            <ha-icon icon="mdi:information-outline"></ha-icon>
+            <span>Informations centrale</span>
+          </span>
+          <ha-icon class="details-chevron" icon="mdi:chevron-down"></ha-icon>
+        </summary>
+        <div class="central-information-content">
+          ${content}
+        </div>
+      </details>
     `;
   }
 
@@ -948,7 +1432,7 @@ class SpcFlexCCard extends HTMLElement {
     const tabs = [
       {
         id: "system",
-        label: "Système",
+        label: "Général",
       },
       {
         id: "areas",
@@ -998,7 +1482,9 @@ class SpcFlexCCard extends HTMLElement {
     ).length;
 
     const activeTampers = tampers.filter(
-      (zone) => zone.state === "on"
+      (zone) =>
+        zone.state === "on" ||
+        zone.eventTamper === true
     ).length;
 
     const controls =
@@ -1137,6 +1623,7 @@ class SpcFlexCCard extends HTMLElement {
 
         ${this._renderSystemDiagnostics()}
         ${controls}
+        ${this._renderCentralInformation()}
       </div>
     `;
   }
@@ -1316,7 +1803,9 @@ class SpcFlexCCard extends HTMLElement {
 
             const activeTampers =
               tampers.filter(
-                (zone) => zone.state === "on"
+                (zone) =>
+                  zone.state === "on" ||
+                  zone.eventTamper === true
               ).length;
 
             const areaEntity =
@@ -1827,6 +2316,146 @@ class SpcFlexCCard extends HTMLElement {
           font-weight: 600;
         }
 
+        .engineer-warning {
+          margin-top: 8px;
+          padding-top: 12px;
+          border-top: 1px solid var(--divider-color);
+        }
+
+        .central-information {
+          margin-top: 18px;
+          border: 1px solid var(--divider-color);
+          border-radius: 14px;
+          overflow: hidden;
+        }
+
+        .central-information > summary {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 15px 16px;
+          cursor: pointer;
+          font-weight: 700;
+          list-style: none;
+        }
+
+        .central-information > summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .details-summary-main {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+        }
+
+        .details-summary-main ha-icon {
+          --mdc-icon-size: 22px;
+          color: var(--secondary-text-color);
+        }
+
+        .details-chevron {
+          --mdc-icon-size: 22px;
+          transition: transform 0.18s ease;
+        }
+
+        .central-information[open] .details-chevron {
+          transform: rotate(180deg);
+        }
+
+        .central-information-content {
+          display: grid;
+          gap: 18px;
+          padding: 0 16px 16px;
+          border-top: 1px solid var(--divider-color);
+        }
+
+        .technical-section {
+          padding-top: 15px;
+        }
+
+        .technical-section-title {
+          margin-bottom: 8px;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .technical-row {
+          display: grid;
+          grid-template-columns: minmax(130px, 0.7fr) minmax(0, 1.3fr);
+          gap: 14px;
+          padding: 6px 0;
+          border-bottom: 1px solid color-mix(
+            in srgb,
+            var(--divider-color) 55%,
+            transparent
+          );
+        }
+
+        .technical-row:last-child {
+          border-bottom: 0;
+        }
+
+        .technical-label {
+          color: var(--secondary-text-color);
+          font-size: 12px;
+        }
+
+        .technical-value {
+          min-width: 0;
+          overflow-wrap: anywhere;
+          text-align: right;
+          font-size: 13px;
+          font-weight: 600;
+        }
+
+        .ats-list,
+        .atp-list,
+        .xbus-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .ats-card,
+        .atp-card,
+        .xbus-card {
+          padding: 12px;
+          border-radius: 11px;
+          background: var(
+            --secondary-background-color,
+            rgba(127, 127, 127, 0.08)
+          );
+        }
+
+        .atp-list {
+          margin-top: 10px;
+          padding-left: 10px;
+          border-left: 2px solid var(--divider-color);
+        }
+
+        .atp-card {
+          background: var(--card-background-color);
+          border: 1px solid var(--divider-color);
+        }
+
+        .ats-title,
+        .atp-title,
+        .xbus-title {
+          font-weight: 700;
+        }
+
+        .xbus-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 4px;
+        }
+
         .list {
           display: grid;
           gap: 14px;
@@ -2057,6 +2686,15 @@ class SpcFlexCCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
 
+          .technical-row {
+            grid-template-columns: 1fr;
+            gap: 2px;
+          }
+
+          .technical-value {
+            text-align: left;
+          }
+
           .system-controls {
             grid-template-columns: repeat(
               2,
@@ -2140,11 +2778,6 @@ class SpcFlexCCard extends HTMLElement {
                 ${this._escapeHtml(title)}
               </div>
 
-              <div class="entity">
-                ${this._escapeHtml(
-                  this._config.entity
-                )}
-              </div>
             </div>
           </div>
 
@@ -2395,9 +3028,9 @@ class SpcFlexCCardEditor extends HTMLElement {
           Les secteurs sont récupérés depuis l'entité d'alarme.
           Les détecteurs SPC sont découverts automatiquement parmi
           les binary_sensor possédant les attributs zone_id, area_id
-          et spc_zone_type. Les diagnostics système sont rattachés à
-          la même centrale via le registre d'entités Home Assistant
-          quand celui-ci est disponible.
+          et spc_zone_type. Les diagnostics et informations techniques
+          sont rattachés à la même intégration via les registres Home
+          Assistant quand ceux-ci sont disponibles.
         </div>
       </div>
     `;
