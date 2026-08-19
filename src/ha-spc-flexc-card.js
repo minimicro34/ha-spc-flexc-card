@@ -1130,18 +1130,61 @@ class SpcFlexCCard extends HTMLElement {
 
     const atsList = Array.from(atsMap.values())
       .map((ats) => {
-        for (const atp of ats.atps.values()) {
-          if (ats.activePath && atp.name) {
-            atp.active =
-              ats.activePath.localeCompare(atp.name, undefined, {
-                sensitivity: "accent",
-              }) === 0;
+        const rawAtps = Array.from(ats.atps.values()).sort(
+          (a, b) => Number(a.id) - Number(b.id)
+        );
+
+        const normalizePath = (value) =>
+          String(value || "")
+            .toLocaleLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\batp\s*\d+\b/g, " ")
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+
+        const activePath = normalizePath(ats.activePath);
+
+        rawAtps.forEach((atp, index) => {
+          // The FlexC ATP id is an internal identifier. Number ATPs locally
+          // inside each ATS for the user-facing card and never expose raw ids.
+          atp.displayId = index + 1;
+
+          if (!activePath) return;
+
+          const atpName = normalizePath(atp.name);
+          const significantWords = atpName
+            .split(/\s+/)
+            .filter((word) => word.length >= 3);
+
+          if (
+            atpName &&
+            (atpName.endsWith(activePath) ||
+              activePath.endsWith(atpName) ||
+              significantWords.some(
+                (word) =>
+                  activePath === word ||
+                  activePath.startsWith(`${word} `) ||
+                  activePath.endsWith(` ${word}`)
+              ))
+          ) {
+            atp.active = true;
+          } else {
+            atp.active = false;
+          }
+        });
+
+        // Some SPC configurations expose one internally numbered ATP without
+        // a friendly ATP name. If it is the sole path of an ATS, active_path is
+        // authoritative and is also the best available display name.
+        if (activePath && rawAtps.length === 1) {
+          rawAtps[0].active = true;
+          if (!rawAtps[0].name && ats.activePath) {
+            rawAtps[0].name = ats.activePath;
           }
         }
 
-        ats.atps = Array.from(ats.atps.values()).sort(
-          (a, b) => Number(a.id) - Number(b.id)
-        );
+        ats.atps = rawAtps;
         return ats;
       })
       .sort((a, b) => Number(a.id) - Number(b.id));
@@ -1155,7 +1198,7 @@ class SpcFlexCCard extends HTMLElement {
     }
 
     if (atp.active === true || String(atp.active).toLowerCase() === "true") {
-      return { label: "Actif", className: "ok" };
+      return { label: "OK", className: "ok" };
     }
 
     if (atp.active === false || String(atp.active).toLowerCase() === "false") {
@@ -1192,7 +1235,7 @@ class SpcFlexCCard extends HTMLElement {
                     ? `<div class="atp-list">
                         ${ats.atps
                           .map((atp) => {
-                            const atpLabel = `ATP ${atp.id ?? "?"}${
+                            const atpLabel = `ATP ${atp.displayId ?? "?"}${
                               atp.name ? ` — ${atp.name}` : ""
                             }`;
                             const stateInfo = this._atpStateLabel(atp);
