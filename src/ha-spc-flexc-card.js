@@ -31,8 +31,10 @@ class SpcFlexCCard extends HTMLElement {
       ...config,
     };
 
-    if (!["system", "areas", "zones"].includes(this._activeTab)) {
-      this._activeTab = "system";
+    const validTabs = ["system", "areas", "zones", "technical"];
+
+    if (entityChanged || !validTabs.includes(this._activeTab)) {
+      this._activeTab = this._loadActiveTab(config.entity) || "system";
     }
 
     if (entityChanged) {
@@ -49,6 +51,46 @@ class SpcFlexCCard extends HTMLElement {
     this._hass = hass;
     this._render();
     this._ensureDiagnosticScope();
+  }
+
+  _activeTabStorageKey(entityId = this._config?.entity) {
+    if (!entityId) {
+      return null;
+    }
+
+    return `spc-flexc-card:${entityId}:active-tab`;
+  }
+
+  _loadActiveTab(entityId) {
+    const key = this._activeTabStorageKey(entityId);
+
+    if (!key) {
+      return null;
+    }
+
+    try {
+      const value = window.localStorage.getItem(key);
+      return ["system", "areas", "zones", "technical"].includes(value)
+        ? value
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  _saveActiveTab(tabId) {
+    const key = this._activeTabStorageKey();
+
+    if (!key) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(key, tabId);
+    } catch {
+      // Home Assistant can still keep the tab during normal rerenders even
+      // when persistent browser storage is unavailable.
+    }
   }
 
   getCardSize() {
@@ -603,6 +645,8 @@ class SpcFlexCCard extends HTMLElement {
           integrationEntityIds: null,
           selected: null,
           device: null,
+          integrationEntries: [],
+          entryMap: new Map(),
         };
       } else {
         const integrationEntityIds = new Set(
@@ -661,12 +705,20 @@ class SpcFlexCCard extends HTMLElement {
             ) || null
           : null;
 
+        const integrationEntries = entries.filter((entry) =>
+          integrationEntityIds.has(entry.entity_id)
+        );
+
         this._diagnosticScope = {
           method,
           entityIds,
           integrationEntityIds,
           selected,
           device,
+          integrationEntries,
+          entryMap: new Map(
+            integrationEntries.map((entry) => [entry.entity_id, entry])
+          ),
         };
       }
     } catch (error) {
@@ -681,6 +733,8 @@ class SpcFlexCCard extends HTMLElement {
         integrationEntityIds: null,
         selected: null,
         device: null,
+        integrationEntries: [],
+        entryMap: new Map(),
       };
     } finally {
       this._diagnosticScopeForEntity =
@@ -717,10 +771,13 @@ class SpcFlexCCard extends HTMLElement {
       return [];
     }
 
+    const entryMap = this._diagnosticScope?.entryMap || new Map();
+
     return Array.from(ids)
       .map((entityId) => ({
         entityId,
         stateObj: this._hass.states[entityId],
+        registryEntry: entryMap.get(entityId) || null,
       }))
       .filter((item) => Boolean(item.stateObj));
   }
@@ -964,6 +1021,7 @@ class SpcFlexCCard extends HTMLElement {
   _getFlexcCommunication() {
     const states = this._scopedStates(true);
     const atsMap = new Map();
+    const orphanAtps = new Map();
 
     const numberValue = (value) => {
       const parsed = Number(value);
@@ -983,53 +1041,87 @@ class SpcFlexCCard extends HTMLElement {
       return null;
     };
 
-    for (const { entityId, stateObj } of states) {
-      const attrs = stateObj.attributes || {};
-      const atsIdRaw = attrValue(attrs, [
-        "ats_id",
-        "ATS_ID",
-      ]);
-      const atpIdRaw = attrValue(attrs, [
-        "atp_id",
-        "ATP_ID",
-      ]);
+    const identityText = (item) =>
+      [
+        item.entityId,
+        item.stateObj?.attributes?.friendly_name,
+        item.registryEntry?.unique_id,
+        item.registryEntry?.original_name,
+      ]
+        .filter(Boolean)
+        .join(" ");
 
-      if (atsIdRaw === null && atpIdRaw === null) {
-        continue;
+    const idFromText = (text, kind) => {
+      const patterns =
+        kind === "ats"
+          ? [
+              /(?:^|[^a-z])ats[_\s-]*(\d+)(?:[^0-9]|$)/i,
+              /(?:^|_)ats_(\d+)(?:_|$)/i,
+            ]
+          : [
+              /(?:^|[^a-z])atp[_\s-]*(\d+)(?:[^0-9]|$)/i,
+              /(?:^|_)atp_(\d+)(?:_|$)/i,
+            ];
+
+      for (const pattern of patterns) {
+        const match = String(text || "").match(pattern);
+        if (match) return Number(match[1]);
       }
 
-      const atsId = numberValue(atsIdRaw);
-      const atpId = numberValue(atpIdRaw);
-      const atsKey = atsId !== null ? atsId : String(atsIdRaw ?? "?");
+      return null;
+    };
 
-      if (!atsMap.has(atsKey)) {
-        atsMap.set(atsKey, {
-          id: atsIdRaw,
-          name: null,
+    const friendlyBase = (item) =>
+      String(
+        item.stateObj?.attributes?.friendly_name ||
+          item.registryEntry?.original_name ||
+          item.entityId
+      ).trim();
+
+    const atpNameFromText = (text, atpId) => {
+      if (atpId === null) return null;
+
+      const normalized = String(text || "")
+        .replace(/\b(last\s+tx\s+successful|last\s+tx\s+success|fault|active|status|state)\b.*$/i, "")
+        .trim();
+
+      const match = normalized.match(
+        new RegExp(`^(.*?)\\s*ATP\\s*${atpId}\\b`, "i")
+      );
+
+      const name = match?.[1]?.trim();
+      return name || null;
+    };
+
+    const atsNameFromActivePath = (text) => {
+      const match = String(text || "").match(/^(.*?)\s+active\s+path$/i);
+      return match?.[1]?.trim() || null;
+    };
+
+    const ensureAts = (atsId, fallbackKey = null) => {
+      const key =
+        atsId !== null && atsId !== undefined
+          ? `id:${atsId}`
+          : `name:${String(fallbackKey || "unknown").toLowerCase()}`;
+
+      if (!atsMap.has(key)) {
+        atsMap.set(key, {
+          id: atsId,
+          name: fallbackKey || null,
           entities: [],
           atps: new Map(),
+          activePath: null,
         });
       }
 
-      const ats = atsMap.get(atsKey);
-      ats.entities.push({ entityId, stateObj });
+      return atsMap.get(key);
+    };
 
-      const atsName = attrValue(attrs, [
-        "ats_name",
-        "ATS_NAME",
-      ]);
-      if (atsName !== null) {
-        ats.name = String(atsName);
-      }
-
-      if (atpIdRaw === null) {
-        continue;
-      }
-
-      const atpKey = atpId !== null ? atpId : String(atpIdRaw);
-      if (!ats.atps.has(atpKey)) {
-        ats.atps.set(atpKey, {
-          id: atpIdRaw,
+    const ensureAtp = (container, atpId) => {
+      const key = String(atpId ?? "?");
+      if (!container.has(key)) {
+        container.set(key, {
+          id: atpId,
           name: null,
           entities: [],
           lastTxOkTimestamp: null,
@@ -1040,24 +1132,86 @@ class SpcFlexCCard extends HTMLElement {
           connectState: null,
         });
       }
+      return container.get(key);
+    };
 
-      const atp = ats.atps.get(atpKey);
-      atp.entities.push({ entityId, stateObj });
+    // First pass: explicit ATS entities and active-path sensors. The latter
+    // still provide useful ATS names even when Home Assistant entities do not
+    // expose ats_id as a state attribute.
+    for (const item of states) {
+      const { stateObj } = item;
+      const attrs = stateObj.attributes || {};
+      const text = identityText(item);
+      const friendly = friendlyBase(item);
 
-      const atpName = attrValue(attrs, [
-        "atp_name",
-        "ATP_NAME",
-      ]);
-      if (atpName !== null) {
-        atp.name = String(atpName);
+      const atsIdAttr = attrValue(attrs, ["ats_id", "ATS_ID"]);
+      const atsId =
+        numberValue(atsIdAttr) ?? idFromText(text, "ats");
+
+      const activePathName = atsNameFromActivePath(friendly);
+
+      if (atsId !== null || activePathName) {
+        const ats = ensureAts(atsId, activePathName);
+        ats.entities.push(item);
+
+        const atsName = attrValue(attrs, ["ats_name", "ATS_NAME"]);
+        if (atsName !== null) ats.name = String(atsName);
+        else if (activePathName) ats.name = activePathName;
+
+        if (activePathName) {
+          const value = this._valueWithUnit(stateObj);
+          if (value) ats.activePath = value;
+        }
       }
+    }
+
+    // Second pass: ATP entities. Prefer explicit ATS/ATP IDs, then registry
+    // unique IDs, and finally friendly-name parsing (e.g. "Ethernet ATP 1").
+    for (const item of states) {
+      const { entityId, stateObj } = item;
+      const attrs = stateObj.attributes || {};
+      const text = identityText(item);
+      const friendly = friendlyBase(item);
+
+      const atpIdAttr = attrValue(attrs, ["atp_id", "ATP_ID"]);
+      const atpId =
+        numberValue(atpIdAttr) ?? idFromText(text, "atp");
+
+      if (atpId === null) continue;
+
+      const atsIdAttr = attrValue(attrs, ["ats_id", "ATS_ID"]);
+      const atsId =
+        numberValue(atsIdAttr) ?? idFromText(text, "ats");
+
+      let atp;
+      let ats = null;
+
+      if (atsId !== null) {
+        ats = ensureAts(atsId);
+        atp = ensureAtp(ats.atps, atpId);
+      } else {
+        atp = ensureAtp(orphanAtps, atpId);
+      }
+
+      atp.entities.push({ entityId, stateObj, registryEntry: item.registryEntry });
+
+      const atpName = attrValue(attrs, ["atp_name", "ATP_NAME"]);
+      const parsedName = atpNameFromText(friendly, atpId);
+      if (atpName !== null) atp.name = String(atpName);
+      else if (parsedName && !atp.name) atp.name = parsedName;
 
       const lastTx = attrValue(attrs, [
         "last_tx_ok_timestamp",
         "LAST_TX_OK_TIMESTAMP",
       ]);
+
       if (lastTx !== null) {
         atp.lastTxOkTimestamp = lastTx;
+      } else if (/last\s+tx\s+(successful|success)/i.test(friendly)) {
+        const value = String(stateObj.state || "").trim();
+        if (value && !["unknown", "unavailable"].includes(value)) {
+          atp.lastTxOkTimestamp = value;
+        }
       }
 
       for (const [target, names] of [
@@ -1070,27 +1224,65 @@ class SpcFlexCCard extends HTMLElement {
         const value = attrValue(attrs, names);
         if (value !== null) atp[target] = value;
       }
+
+      if (/\bfault\b/i.test(friendly)) {
+        if (stateObj.state === "on") atp.fault = true;
+        else if (stateObj.state === "off") atp.fault = false;
+      }
+    }
+
+    // If ATP entities do not expose ATS_ID, bind them to ATS active-path
+    // sensors by matching the active path value to the ATP ID/name. Keep any
+    // unmatched ATPs visible in an ungrouped fallback instead of inventing a
+    // relationship.
+    for (const [key, atp] of Array.from(orphanAtps.entries())) {
+      const candidates = Array.from(atsMap.values()).filter((ats) => {
+        const activePath = String(ats.activePath || "").toLowerCase();
+        if (!activePath) return false;
+
+        const idNeedle = `atp ${atp.id}`.toLowerCase();
+        const nameNeedle = String(atp.name || "").toLowerCase();
+
+        return (
+          activePath.includes(idNeedle) ||
+          (nameNeedle && activePath.includes(nameNeedle))
+        );
+      });
+
+      if (candidates.length === 1) {
+        candidates[0].atps.set(key, atp);
+        orphanAtps.delete(key);
+      }
     }
 
     const atsList = Array.from(atsMap.values()).map((ats) => {
-      if (!ats.name) {
-        const nameEntity = ats.entities.find(({ stateObj }) => {
-          const friendly = String(
-            stateObj.attributes?.friendly_name || ""
-          );
-          return /\bATS\b/i.test(friendly) && !/\bATP\b/i.test(friendly);
-        });
-        const candidate = nameEntity?.stateObj?.attributes?.ats_name;
-        if (candidate) ats.name = String(candidate);
-      }
-
       ats.atps = Array.from(ats.atps.values()).sort(
         (a, b) => Number(a.id) - Number(b.id)
       );
       return ats;
     });
 
-    return atsList.sort((a, b) => Number(a.id) - Number(b.id));
+    atsList.sort((a, b) => {
+      if (a.id !== null && b.id !== null) return Number(a.id) - Number(b.id);
+      if (a.id !== null) return -1;
+      if (b.id !== null) return 1;
+      return String(a.name || "").localeCompare(String(b.name || ""), this._locale());
+    });
+
+    if (orphanAtps.size) {
+      atsList.push({
+        id: null,
+        name: "ATP non rattachés",
+        entities: [],
+        activePath: null,
+        atps: Array.from(orphanAtps.values()).sort(
+          (a, b) => Number(a.id) - Number(b.id)
+        ),
+        ungrouped: true,
+      });
+    }
+
+    return atsList;
   }
 
   _atpStateLabel(atp) {
@@ -1127,9 +1319,11 @@ class SpcFlexCCard extends HTMLElement {
         <div class="ats-list">
           ${atsList
             .map((ats) => {
-              const atsLabel = `ATS ${ats.id ?? "?"}${
-                ats.name ? ` — ${ats.name}` : ""
-              }`;
+              const atsLabel = ats.ungrouped
+                ? ats.name
+                : `ATS ${ats.id ?? "?"}${
+                    ats.name ? ` — ${ats.name}` : ""
+                  }`;
 
               return `
                 <div class="ats-card">
@@ -1156,7 +1350,9 @@ class SpcFlexCCard extends HTMLElement {
                                       stateInfo.className
                                     )
                                   : ""}
-                                ${this._technicalLine("ATS utilisé", atsLabel)}
+                                ${ats.ungrouped
+                                  ? ""
+                                  : this._technicalLine("ATS utilisé", atsLabel)}
                                 ${this._technicalLine(
                                   "Dernière transmission réussie",
                                   formattedTx
@@ -1259,7 +1455,7 @@ class SpcFlexCCard extends HTMLElement {
     `;
   }
 
-  _renderCentralInformation() {
+  _renderTechnicalSystem() {
     const scope = this._diagnosticScope;
     const device = scope?.device || {};
 
@@ -1353,18 +1549,9 @@ class SpcFlexCCard extends HTMLElement {
     }
 
     return `
-      <details class="central-information">
-        <summary>
-          <span class="details-summary-main">
-            <ha-icon icon="mdi:information-outline"></ha-icon>
-            <span>Informations centrale</span>
-          </span>
-          <ha-icon class="details-chevron" icon="mdi:chevron-down"></ha-icon>
-        </summary>
-        <div class="central-information-content">
-          ${content}
-        </div>
-      </details>
+      <div class="technical-system-view">
+        ${content}
+      </div>
     `;
   }
 
@@ -1441,6 +1628,10 @@ class SpcFlexCCard extends HTMLElement {
       {
         id: "zones",
         label: "Détecteurs",
+      },
+      {
+        id: "technical",
+        label: "Système",
       },
     ];
 
@@ -1623,7 +1814,6 @@ class SpcFlexCCard extends HTMLElement {
 
         ${this._renderSystemDiagnostics()}
         ${controls}
-        ${this._renderCentralInformation()}
       </div>
     `;
   }
@@ -2031,6 +2221,9 @@ class SpcFlexCCard extends HTMLElement {
       case "zones":
         return this._renderZones();
 
+      case "technical":
+        return this._renderTechnicalSystem();
+
       case "system":
       default:
         return this._renderSystem();
@@ -2149,26 +2342,37 @@ class SpcFlexCCard extends HTMLElement {
         .summary-card {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
           min-width: 0;
-          padding: 15px;
+          padding: 12px;
           border: 1px solid var(--divider-color);
           border-radius: 12px;
         }
 
         .summary-card ha-icon {
-          --mdc-icon-size: 30px;
+          --mdc-icon-size: 28px;
           flex: 0 0 auto;
+        }
+
+        .summary-card > div {
+          min-width: 0;
         }
 
         .summary-value {
           font-size: 20px;
           font-weight: 700;
+          line-height: 1.1;
         }
 
         .summary-label {
+          max-width: 100%;
           color: var(--secondary-text-color);
-          font-size: 12px;
+          font-size: 11px;
+          line-height: 1.25;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          word-break: normal;
+          hyphens: auto;
         }
 
         .alarm-controls {
@@ -2322,53 +2526,9 @@ class SpcFlexCCard extends HTMLElement {
           border-top: 1px solid var(--divider-color);
         }
 
-        .central-information {
-          margin-top: 18px;
-          border: 1px solid var(--divider-color);
-          border-radius: 14px;
-          overflow: hidden;
-        }
-
-        .central-information > summary {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 15px 16px;
-          cursor: pointer;
-          font-weight: 700;
-          list-style: none;
-        }
-
-        .central-information > summary::-webkit-details-marker {
-          display: none;
-        }
-
-        .details-summary-main {
-          display: flex;
-          align-items: center;
-          gap: 9px;
-        }
-
-        .details-summary-main ha-icon {
-          --mdc-icon-size: 22px;
-          color: var(--secondary-text-color);
-        }
-
-        .details-chevron {
-          --mdc-icon-size: 22px;
-          transition: transform 0.18s ease;
-        }
-
-        .central-information[open] .details-chevron {
-          transform: rotate(180deg);
-        }
-
-        .central-information-content {
+        .technical-system-view {
           display: grid;
           gap: 18px;
-          padding: 0 16px 16px;
-          border-top: 1px solid var(--divider-color);
         }
 
         .technical-section {
@@ -2799,6 +2959,7 @@ class SpcFlexCCard extends HTMLElement {
           this._activeTab =
             button.dataset.tab;
 
+          this._saveActiveTab(this._activeTab);
           this._render();
         }
       );
