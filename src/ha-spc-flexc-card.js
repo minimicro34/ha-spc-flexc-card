@@ -1021,266 +1021,130 @@ class SpcFlexCCard extends HTMLElement {
   _getFlexcCommunication() {
     const states = this._scopedStates(true);
     const atsMap = new Map();
-    const orphanAtps = new Map();
 
-    const numberValue = (value) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-
-    const attrValue = (attrs, names) => {
-      for (const name of names) {
-        if (
-          attrs[name] !== undefined &&
-          attrs[name] !== null &&
-          String(attrs[name]).trim() !== ""
-        ) {
-          return attrs[name];
-        }
-      }
-      return null;
-    };
-
-    const identityText = (item) =>
-      [
-        item.entityId,
-        item.stateObj?.attributes?.friendly_name,
-        item.registryEntry?.unique_id,
-        item.registryEntry?.original_name,
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-    const idFromText = (text, kind) => {
-      const patterns =
-        kind === "ats"
-          ? [
-              /(?:^|[^a-z])ats[_\s-]*(\d+)(?:[^0-9]|$)/i,
-              /(?:^|_)ats_(\d+)(?:_|$)/i,
-            ]
-          : [
-              /(?:^|[^a-z])atp[_\s-]*(\d+)(?:[^0-9]|$)/i,
-              /(?:^|_)atp_(\d+)(?:_|$)/i,
-            ];
-
-      for (const pattern of patterns) {
-        const match = String(text || "").match(pattern);
-        if (match) return Number(match[1]);
-      }
-
-      return null;
-    };
-
-    const friendlyBase = (item) =>
-      String(
-        item.stateObj?.attributes?.friendly_name ||
-          item.registryEntry?.original_name ||
-          item.entityId
-      ).trim();
-
-    const atpNameFromText = (text, atpId) => {
-      if (atpId === null) return null;
-
-      const normalized = String(text || "")
-        .replace(/\b(last\s+tx\s+successful|last\s+tx\s+success|fault|active|status|state)\b.*$/i, "")
-        .trim();
-
-      const match = normalized.match(
-        new RegExp(`^(.*?)\\s*ATP\\s*${atpId}\\b`, "i")
-      );
-
-      const name = match?.[1]?.trim();
-      return name || null;
-    };
-
-    const atsNameFromActivePath = (text) => {
-      const match = String(text || "").match(/^(.*?)\s+active\s+path$/i);
-      return match?.[1]?.trim() || null;
-    };
-
-    const ensureAts = (atsId, fallbackKey = null) => {
-      const key =
-        atsId !== null && atsId !== undefined
-          ? `id:${atsId}`
-          : `name:${String(fallbackKey || "unknown").toLowerCase()}`;
-
-      if (!atsMap.has(key)) {
-        atsMap.set(key, {
+    const ensureAts = (atsId) => {
+      if (!atsMap.has(atsId)) {
+        atsMap.set(atsId, {
           id: atsId,
-          name: fallbackKey || null,
+          name: null,
           entities: [],
           atps: new Map(),
           activePath: null,
         });
       }
-
-      return atsMap.get(key);
+      return atsMap.get(atsId);
     };
 
-    const ensureAtp = (container, atpId) => {
-      const key = String(atpId ?? "?");
-      if (!container.has(key)) {
-        container.set(key, {
+    const ensureAtp = (ats, atpId) => {
+      if (!ats.atps.has(atpId)) {
+        ats.atps.set(atpId, {
           id: atpId,
           name: null,
           entities: [],
           lastTxOkTimestamp: null,
           active: null,
           fault: null,
-          status: null,
-          state: null,
-          connectState: null,
         });
       }
-      return container.get(key);
+      return ats.atps.get(atpId);
     };
 
-    // First pass: explicit ATS entities and active-path sensors. The latter
-    // still provide useful ATS names even when Home Assistant entities do not
-    // expose ats_id as a state attribute.
+    const friendlyName = (item) =>
+      String(
+        item.stateObj?.attributes?.friendly_name ||
+          item.registryEntry?.original_name ||
+          item.entityId ||
+          ""
+      ).trim();
+
+    const atpNameFromFriendly = (friendly, atpId) => {
+      const suffix = new RegExp(
+        `\\s+ATP\\s+${atpId}\\s+(?:last\\s+TX\\s+successful|fault)$`,
+        "i"
+      );
+      const match = String(friendly || "").match(suffix);
+      if (!match) return null;
+      const name = String(friendly).slice(0, match.index).trim();
+      return name || null;
+    };
+
+    /*
+     * SPC FlexC exposes stable registry unique IDs for communication entities:
+     *   <entry_id>_ats_<ats_id>_active_path
+     *   <entry_id>_ats_<ats_id>_atp_<atp_id>_last_tx_ok
+     *   <entry_id>_ats_<ats_id>_atp_<atp_id>_fault
+     *
+     * Parse only those IDs. Do not infer ATS/ATP numbers from entity names or
+     * unrelated states: doing so can incorrectly turn the alarm entity into
+     * an ATS 0 / ATP 0.
+     */
     for (const item of states) {
-      const { stateObj } = item;
-      const attrs = stateObj.attributes || {};
-      const text = identityText(item);
-      const friendly = friendlyBase(item);
+      const uniqueId = String(item.registryEntry?.unique_id || "");
+      const stateObj = item.stateObj;
+      if (!uniqueId || !stateObj) continue;
 
-      const atsIdAttr = attrValue(attrs, ["ats_id", "ATS_ID"]);
-      const atsId =
-        numberValue(atsIdAttr) ?? idFromText(text, "ats");
+      let match = uniqueId.match(/_ats_(\d+)_active_path$/);
+      if (match) {
+        const atsId = Number(match[1]);
+        if (atsId < 1) continue;
 
-      const activePathName = atsNameFromActivePath(friendly);
-
-      if (atsId !== null || activePathName) {
-        const ats = ensureAts(atsId, activePathName);
+        const ats = ensureAts(atsId);
         ats.entities.push(item);
 
-        const atsName = attrValue(attrs, ["ats_name", "ATS_NAME"]);
-        if (atsName !== null) ats.name = String(atsName);
-        else if (activePathName) ats.name = activePathName;
+        const friendly = friendlyName(item);
+        const nameMatch = friendly.match(/^(.*?)\s+active\s+path$/i);
+        ats.name = nameMatch?.[1]?.trim() || ats.name;
 
-        if (activePathName) {
-          const value = this._valueWithUnit(stateObj);
-          if (value) ats.activePath = value;
+        const activePath = String(stateObj.state || "").trim();
+        if (activePath && !["unknown", "unavailable"].includes(activePath)) {
+          ats.activePath = activePath;
         }
-      }
-    }
-
-    // Second pass: ATP entities. Prefer explicit ATS/ATP IDs, then registry
-    // unique IDs, and finally friendly-name parsing (e.g. "Ethernet ATP 1").
-    for (const item of states) {
-      const { entityId, stateObj } = item;
-      const attrs = stateObj.attributes || {};
-      const text = identityText(item);
-      const friendly = friendlyBase(item);
-
-      const atpIdAttr = attrValue(attrs, ["atp_id", "ATP_ID"]);
-      const atpId =
-        numberValue(atpIdAttr) ?? idFromText(text, "atp");
-
-      if (atpId === null) continue;
-
-      const atsIdAttr = attrValue(attrs, ["ats_id", "ATS_ID"]);
-      const atsId =
-        numberValue(atsIdAttr) ?? idFromText(text, "ats");
-
-      let atp;
-      let ats = null;
-
-      if (atsId !== null) {
-        ats = ensureAts(atsId);
-        atp = ensureAtp(ats.atps, atpId);
-      } else {
-        atp = ensureAtp(orphanAtps, atpId);
+        continue;
       }
 
-      atp.entities.push({ entityId, stateObj, registryEntry: item.registryEntry });
+      match = uniqueId.match(/_ats_(\d+)_atp_(\d+)_(last_tx_ok|fault)$/);
+      if (!match) continue;
 
-      const atpName = attrValue(attrs, ["atp_name", "ATP_NAME"]);
-      const parsedName = atpNameFromText(friendly, atpId);
-      if (atpName !== null) atp.name = String(atpName);
-      else if (parsedName && !atp.name) atp.name = parsedName;
+      const atsId = Number(match[1]);
+      const atpId = Number(match[2]);
+      const kind = match[3];
+      if (atsId < 1 || atpId < 1) continue;
 
-      const lastTx = attrValue(attrs, [
-        "last_tx_ok_timestamp",
-        "LAST_TX_OK_TIMESTAMP",
-      ]);
+      const ats = ensureAts(atsId);
+      const atp = ensureAtp(ats, atpId);
+      atp.entities.push(item);
 
-      if (lastTx !== null) {
-        atp.lastTxOkTimestamp = lastTx;
-      } else if (/last\s+tx\s+(successful|success)/i.test(friendly)) {
+      const parsedName = atpNameFromFriendly(friendlyName(item), atpId);
+      if (parsedName && !atp.name) atp.name = parsedName;
+
+      if (kind === "last_tx_ok") {
         const value = String(stateObj.state || "").trim();
         if (value && !["unknown", "unavailable"].includes(value)) {
           atp.lastTxOkTimestamp = value;
         }
-      }
-
-      for (const [target, names] of [
-        ["active", ["active"]],
-        ["fault", ["fault"]],
-        ["status", ["status", "STATUS"]],
-        ["state", ["state", "STATE"]],
-        ["connectState", ["connect_state", "CONNECT_STATE"]],
-      ]) {
-        const value = attrValue(attrs, names);
-        if (value !== null) atp[target] = value;
-      }
-
-      if (/\bfault\b/i.test(friendly)) {
+      } else if (kind === "fault") {
         if (stateObj.state === "on") atp.fault = true;
         else if (stateObj.state === "off") atp.fault = false;
       }
     }
 
-    // If ATP entities do not expose ATS_ID, bind them to ATS active-path
-    // sensors by matching the active path value to the ATP ID/name. Keep any
-    // unmatched ATPs visible in an ungrouped fallback instead of inventing a
-    // relationship.
-    for (const [key, atp] of Array.from(orphanAtps.entries())) {
-      const candidates = Array.from(atsMap.values()).filter((ats) => {
-        const activePath = String(ats.activePath || "").toLowerCase();
-        if (!activePath) return false;
+    const atsList = Array.from(atsMap.values())
+      .map((ats) => {
+        for (const atp of ats.atps.values()) {
+          if (ats.activePath && atp.name) {
+            atp.active =
+              ats.activePath.localeCompare(atp.name, undefined, {
+                sensitivity: "accent",
+              }) === 0;
+          }
+        }
 
-        const idNeedle = `atp ${atp.id}`.toLowerCase();
-        const nameNeedle = String(atp.name || "").toLowerCase();
-
-        return (
-          activePath.includes(idNeedle) ||
-          (nameNeedle && activePath.includes(nameNeedle))
-        );
-      });
-
-      if (candidates.length === 1) {
-        candidates[0].atps.set(key, atp);
-        orphanAtps.delete(key);
-      }
-    }
-
-    const atsList = Array.from(atsMap.values()).map((ats) => {
-      ats.atps = Array.from(ats.atps.values()).sort(
-        (a, b) => Number(a.id) - Number(b.id)
-      );
-      return ats;
-    });
-
-    atsList.sort((a, b) => {
-      if (a.id !== null && b.id !== null) return Number(a.id) - Number(b.id);
-      if (a.id !== null) return -1;
-      if (b.id !== null) return 1;
-      return String(a.name || "").localeCompare(String(b.name || ""), this._locale());
-    });
-
-    if (orphanAtps.size) {
-      atsList.push({
-        id: null,
-        name: "ATP non rattachés",
-        entities: [],
-        activePath: null,
-        atps: Array.from(orphanAtps.values()).sort(
+        ats.atps = Array.from(ats.atps.values()).sort(
           (a, b) => Number(a.id) - Number(b.id)
-        ),
-        ungrouped: true,
-      });
-    }
+        );
+        return ats;
+      })
+      .sort((a, b) => Number(a.id) - Number(b.id));
 
     return atsList;
   }
@@ -1298,12 +1162,8 @@ class SpcFlexCCard extends HTMLElement {
       return { label: "Inactif", className: "muted" };
     }
 
-    const source = atp.entities
-      .map(({ stateObj }) => this._valueWithUnit(stateObj))
-      .find(Boolean);
-
-    if (source) {
-      return { label: source, className: "" };
+    if (atp.fault === false || String(atp.fault).toLowerCase() === "false") {
+      return { label: "OK", className: "ok" };
     }
 
     return null;
