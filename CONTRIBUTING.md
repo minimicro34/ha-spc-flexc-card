@@ -18,4 +18,4 @@ Edit `src/ha-spc-flexc-card.js`, then run `npm run build`.
 
 ## License
 
-Contributions are licensed under the MIT License.
+Contributions are licensed under the GNU General Public License v3.0 or later.
