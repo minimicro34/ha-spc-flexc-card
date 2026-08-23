@@ -335,7 +335,7 @@ you can buy me a coffee.
   </a>
 </p>
 
-Your support helps dedicate more time to improving the card, adding new
+Your support helps me dedicate more time to improving the card, adding new
 features, testing additional SPC configurations and fixing issues.
 
 Bug reports, feature suggestions, contributions and GitHub stars are also
