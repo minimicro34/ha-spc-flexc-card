@@ -4,6 +4,21 @@ All notable changes to SPC FlexC Card are documented in this file.
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-09-08
+
+### Added
+
+- Added support for custom SPC Part Set A and Part Set B names exposed by the
+  SPC FlexC integration.
+
+### Changed
+
+- Area partial-set buttons now display the custom SPC name when available
+  instead of always showing `Partiel A` or `Partiel B`.
+- Area armed-state badges now use the same custom partial-set names.
+- The card keeps `Partiel A` and `Partiel B` as fallbacks when no custom
+  name is exposed by the integration.
+
 ## [1.0.0] - 2026-08-19
 
 ### Added
