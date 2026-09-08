@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -1721,6 +1721,17 @@ class SpcFlexCCard extends HTMLElement {
     `;
   }
 
+  _partSetLabel(areaEntity, part) {
+    const attrs = areaEntity?.stateObj?.attributes || {};
+    const attributeName = part === "a" ? "partset_a_name" : "partset_b_name";
+    const fallback = part === "a" ? "Partiel A" : "Partiel B";
+    const value = attrs[attributeName];
+
+    return value != null && String(value).trim()
+      ? String(value).trim()
+      : fallback;
+  }
+
   _renderAreaControls(area, areaEntity) {
     if (
       !this._config.show_controls ||
@@ -1786,7 +1797,9 @@ class SpcFlexCCard extends HTMLElement {
             <ha-icon
               icon="mdi:shield-home"
             ></ha-icon>
-            <span>Partiel A</span>
+            <span>${this._escapeHtml(
+              this._partSetLabel(areaEntity, "a")
+            )}</span>
           </button>
         `);
       }
@@ -1809,7 +1822,9 @@ class SpcFlexCCard extends HTMLElement {
             <ha-icon
               icon="mdi:weather-night"
             ></ha-icon>
-            <span>Partiel B</span>
+            <span>${this._escapeHtml(
+              this._partSetLabel(areaEntity, "b")
+            )}</span>
           </button>
         `);
       }
@@ -1937,12 +1952,16 @@ class SpcFlexCCard extends HTMLElement {
 
             const label =
               renderedState
-                ? this._stateLabel(
-                    renderedState
-                  ).replace(
-                    /^Désarmée$/,
-                    "Désarmé"
-                  )
+                ? (renderedState === "armed_home"
+                    ? this._partSetLabel(areaEntity, "a")
+                    : renderedState === "armed_night"
+                      ? this._partSetLabel(areaEntity, "b")
+                      : this._stateLabel(
+                          renderedState
+                        ).replace(
+                          /^Désarmée$/,
+                          "Désarmé"
+                        ))
                 : this._modeLabel(mode);
 
             return `
