@@ -1461,7 +1461,8 @@ class SpcFlexCCard extends HTMLElement {
   async _callAlarmService(
     service,
     entityId = this._config?.entity,
-    displayName = null
+    displayName = null,
+    actionLabel = null
   ) {
     if (!this._hass || !entityId) {
       return;
@@ -1490,12 +1491,12 @@ class SpcFlexCCard extends HTMLElement {
 
       case "alarm_arm_home":
         prompt =
-          `Activer le partiel A sur ${name} ?`;
+          `Activer ${actionLabel || "le partiel A"} sur ${name} ?`;
         break;
 
       case "alarm_arm_night":
         prompt =
-          `Activer le partiel B sur ${name} ?`;
+          `Activer ${actionLabel || "le partiel B"} sur ${name} ?`;
         break;
 
       default:
@@ -2218,6 +2219,9 @@ class SpcFlexCCard extends HTMLElement {
             data-name="${this._escapeHtml(
               area.name
             )}"
+            data-action-label="${this._escapeHtml(
+              this._partSetLabel(areaEntity, "a")
+            )}"
           >
             <ha-icon
               icon="mdi:shield-home"
@@ -2242,6 +2246,9 @@ class SpcFlexCCard extends HTMLElement {
             )}"
             data-name="${this._escapeHtml(
               area.name
+            )}"
+            data-action-label="${this._escapeHtml(
+              this._partSetLabel(areaEntity, "b")
             )}"
           >
             <ha-icon
@@ -3431,7 +3438,8 @@ class SpcFlexCCard extends HTMLElement {
             button.dataset.service,
             button.dataset.entity ||
               this._config.entity,
-            button.dataset.name || null
+            button.dataset.name || null,
+            button.dataset.actionLabel || null
           );
         }
       );
