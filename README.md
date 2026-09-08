@@ -225,15 +225,14 @@ Then install **SPC FlexC Card** and reload Home Assistant if required.
 
 ### Manual installation
 
-Copy the built files:
+Copy the built file:
 
 ```text
 ha-spc-flexc-card.js
-ha-spc-flexc-card-base.js
 ```
 
-to the same location served by Home Assistant and add
-`ha-spc-flexc-card.js` as a Lovelace JavaScript module resource.
+to a location served by Home Assistant and add `ha-spc-flexc-card.js` as a
+Lovelace JavaScript module resource.
 
 HACS installation is recommended because it handles the dashboard resource and
 updates more conveniently.
@@ -303,43 +302,36 @@ data.
 
 ## Development
 
-The 1.0.1 source entry point is:
+The card source is maintained in:
 
 ```text
 src/ha-spc-flexc-card.js
 ```
 
-The existing card implementation is kept in:
-
-```text
-src/ha-spc-flexc-card-base.js
-```
-
-The entry point loads that base implementation and adds the dynamic
-access-control door view. This keeps the existing tested card behaviour intact
-while the door support is validated on real hardware.
-
-Then build the distributable file:
+Build the distributable file with:
 
 ```bash
 npm run build
 ```
 
-Run the project checks:
+This generates the HACS/manual-installation file at the repository root:
+
+```text
+ha-spc-flexc-card.js
+```
+
+Run the project checks with:
 
 ```bash
 npm run check
 git diff --check
 ```
 
-The HACS files at the repository root are:
+`npm run check` verifies the source syntax and confirms that the generated
+distribution file is up to date.
 
-```text
-ha-spc-flexc-card.js
-ha-spc-flexc-card-base.js
-```
-
-Do not edit generated files directly.
+Do not edit the generated root file directly; edit the source under `src/` and
+run `npm run build` instead.
 
 ## Contributing
 
