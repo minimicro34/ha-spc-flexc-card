@@ -1,162 +1,443 @@
 # SPC FlexC Card
 
-A dedicated Home Assistant Lovelace card for the [SPC FlexC integration](https://github.com/minimicro34/ha-spc-flexc).
+> Dedicated Lovelace dashboard card for the SPC FlexC Home Assistant integration.
 
-The card provides four core views plus a conditional **Doors** view when SPC access-control doors are discovered:
+<p align="center">
 
-- **General** — overall alarm state, counts, diagnostics and global controls.
-- **Areas** — one card per SPC area, with area state and available arm/disarm controls.
-- **Detectors** — dynamically discovered SPC zones and tampers.
-- **Doors** — shown only when access-control doors are exposed by SPC FlexC.
-- **System** — panel identity, power, FlexC communication, X-BUS, RF and modem information when available.
+[![GitHub Release](https://img.shields.io/github/v/release/minimicro34/ha-spc-flexc-card)](https://github.com/minimicro34/ha-spc-flexc-card/releases)
+[![CI](https://github.com/minimicro34/ha-spc-flexc-card/actions/workflows/ci.yml/badge.svg)](https://github.com/minimicro34/ha-spc-flexc-card/actions/workflows/ci.yml)
+[![HACS](https://github.com/minimicro34/ha-spc-flexc-card/actions/workflows/hacs.yml/badge.svg)](https://github.com/minimicro34/ha-spc-flexc-card/actions/workflows/hacs.yml)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-SPC%20FlexC-41BDF5.svg)](https://www.home-assistant.io/)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/minimicro34)
+[![License](https://img.shields.io/github/license/minimicro34/ha-spc-flexc-card)](LICENSE)
 
-## Requirements
+</p>
 
-- Home Assistant
-- [SPC FlexC](https://github.com/minimicro34/ha-spc-flexc)
-- A recent SPC FlexC version exposing the entities used by the card
+<p align="center">
+  🔐 Alarm control • 🏠 Areas • 🚪 Detectors • 🚪 Access-control doors • 📡 FlexC • 🩺 Diagnostics
+</p>
 
-## Installation with HACS
+SPC FlexC Card is a custom Home Assistant dashboard card designed for the
+[SPC FlexC integration](https://github.com/minimicro34/ha-spc-flexc).
 
-1. Add this repository as a custom frontend repository in HACS.
-2. Install **SPC FlexC Card**.
-3. Refresh the browser after installation or update.
-4. Add the card to a dashboard.
+It provides a dedicated interface for everyday alarm control while keeping
+technical SPC and FlexC information available in a separate system view.
 
-Example:
+> [!IMPORTANT]
+> This card can trigger alarm and access-control state-changing services.
+> Confirmation dialogs are enabled by default.
 
-```yaml
-type: custom:spc-flexc-card
-entity: alarm_control_panel.spc_flexc
-```
+## Screenshots
 
-Optional settings:
+### General
 
-```yaml
-type: custom:spc-flexc-card
-entity: alarm_control_panel.spc_flexc
-name: SPC FlexC
-show_controls: true
-confirm_actions: true
-```
+![SPC FlexC Card - General view](images/general.png)
 
-## General
+### Areas
 
-The General view displays the panel state, the number of discovered areas and detectors, active detectors and tamper faults, FlexC connection diagnostics, active system faults and the main alarm controls.
+![SPC FlexC Card - Areas view](images/areas.png)
 
-The exact information shown depends on what the SPC FlexC integration exposes for the connected panel.
+### Detectors
 
-## Areas
+![SPC FlexC Card - Detectors view](images/detectors.png)
 
-Each SPC area is displayed separately with its current alarm state, associated detectors, active zones, tamper state and the most recent arm/disarm information when available.
+### System
 
-### Custom Part Set names
+![SPC FlexC Card - System view 1](images/system1.png)
 
-SPC FlexC can expose the names configured in the SPC panel for **Part Set A** and **Part Set B**.
+![SPC FlexC Card - System view 2](images/system2.png)
 
-When available, the card automatically uses those names in:
+> The Doors view is displayed only when the SPC FlexC integration discovers at
+> least one SPC access-control door.
 
-- the area control buttons;
-- the displayed armed-state badge.
+---
+## Contents
+---
 
-For example, if the SPC panel names Part Set A `Nuit`, the card displays **Nuit** instead of **Partiel A**.
+- [Features](#features)
+  - [General](#general)
+  - [Areas](#areas)
+  - [Detectors](#detectors)
+  - [Doors](#doors)
+  - [System](#system)
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [HACS](#hacs)
+  - [Manual installation](#manual-installation)
+- [Configuration](#configuration)
+- [Options](#options)
+- [Alarm and access-control safety](#alarm-and-access-control-safety)
+- [Dynamic information](#dynamic-information)
+- [Development](#development)
+- [Contributing](#contributing)
+- [Disclaimer](#disclaimer)
+- [Support](#support)
+- [Related project](#related-project)
+- [License](#license)
 
-If no custom name is exposed, the card keeps the fallback labels **Partiel A** and **Partiel B**.
+## Features
 
-No additional card configuration is required.
+SPC FlexC Card provides four core views and adds a fifth **Doors** view when
+access-control doors are available.
 
-## Detectors
+### General
 
-SPC zones are discovered automatically from Home Assistant entities exposed by the SPC FlexC integration.
+The General view is designed for everyday use and includes:
 
-The card groups normal detectors and tamper entities and displays an appropriate state according to the Home Assistant device class and SPC zone information.
+- global alarm state;
+- area, detector and tamper counters;
+- FlexC connection status;
+- active SPC faults;
+- Engineer / Installer mode indication when active;
+- global Disarm and Full Set controls.
 
-No manual detector `entity_id` list is required.
+Technical entity IDs are intentionally hidden from the normal user interface.
 
-## Doors
+### Areas
 
-The **Doors** tab appears automatically when at least one SPC access-control door is discovered through the SPC FlexC integration. If the installation has no SPC door controller, the tab remains hidden.
+The Areas view provides individual SPC area control.
 
-For each discovered door, the card displays:
+For each area, the card can display:
 
-- the door name, using the SPC zone name when available;
-- the associated SPC areas, for example `Garage ↔ Studio`;
-- the raw SPC **Status** value;
-- the raw SPC **Mode** value;
-- the associated SPC zone when available.
+- current arming state;
+- Arm or Disarm action according to the current state;
+- Part Set A when supported by the area, using the custom SPC name exposed by the integration when available;
+- Part Set B when supported by the area, using the custom SPC name exposed by the integration when available;
+- last Set / Unset information;
+- localized date and time;
+- user name, with user ID as fallback.
 
-When the corresponding native Home Assistant button entities are exposed by SPC FlexC, the card also provides the following controls:
+When the integration exposes custom partial-set names from the SPC panel, the
+card uses them for the corresponding controls and armed-state labels. For
+example, an SPC Part Set A configured as `Nuit` is displayed as **Nuit**.
+Otherwise the card falls back to `Partiel A` and `Partiel B`.
+
+The SPC panel remains authoritative for arming availability and validation.
+
+### Detectors
+
+The Detectors view displays SPC zones and separates normal detectors from
+tamper states.
+
+The visual convention is:
+
+- green — normal;
+- orange — normal activity such as movement or opening;
+- red — alarm, fault or tamper;
+- grey — unavailable or unknown.
+
+The card uses the states and attributes exposed by the SPC FlexC integration
+and does not invent unavailable detector information.
+
+### Doors
+
+The **Doors** tab is automatically displayed when at least one SPC
+access-control door is discovered. Installations without a door controller do
+not get an empty permanent tab.
+
+For each discovered door, the card can display:
+
+- the SPC door name, using the associated zone name when available;
+- the associated areas, for example `Garage ↔ Studio`;
+- the associated SPC zone;
+- the raw SPC `Status` value;
+- the raw SPC `Mode` value.
+
+When the corresponding native Home Assistant button entities are exposed by
+SPC FlexC, four controls are available:
 
 - **Ouverture momentanée**;
 - **Ouverture permanente**;
 - **Retour au mode normal**;
 - **Verrouiller**.
 
-The door view is fully dynamic and does not require manual button or sensor entity IDs.
+No manual door sensor or button `entity_id` configuration is required. The
+card resolves them from the SPC FlexC configuration entry and Home Assistant
+entity registry metadata.
 
-### Door validation status
+> [!NOTE]
+> Door `Status` and `Mode` are intentionally displayed as raw values while the
+> numeric mappings are being validated on real SPC access-control hardware.
+> The card does not guess meanings such as locked, unlocked or open.
 
-The card intentionally displays numeric **Status** and **Mode** values without translating them into semantic labels such as “locked”, “unlocked” or “open”. Those mappings are kept raw until they have been confirmed on real SPC access-control hardware.
+### System
 
-The door commands are state-changing actions. When `confirm_actions: true` is enabled, the card asks for confirmation before sending a door command.
+The System view contains technical and diagnostic information that is less
+useful during normal daily operation.
 
-## System
+Depending on what the SPC panel and integration expose, this can include:
 
-The System view uses the Home Assistant entity and device registries to group information belonging to the same SPC FlexC configuration entry.
+- manufacturer;
+- model;
+- firmware and hardware information;
+- serial number;
+- panel power and battery information;
+- RF and modem diagnostics;
+- X-BUS devices and diagnostics;
+- FlexC ATS paths;
+- ATP paths associated with each ATS;
+- active FlexC path;
+- ATP fault state;
+- last successful transmission timestamp for each ATP.
 
-Depending on the connected panel and the integration version, it can display:
+ATS and ATP information is dynamically discovered from Home Assistant.
 
-- panel manufacturer, model, firmware, hardware and serial number;
-- AC frequency, battery voltage and auxiliary supply information;
-- FlexC ATS/ATP communication information;
-- X-BUS devices and tamper state;
-- RF and modem entities.
+ATP numbering displayed by the card is local to each ATS. Internal FlexC ATP
+identifiers are used only to associate the corresponding entities and are not
+shown as user-facing ATP numbers.
 
-Unavailable information is simply omitted.
+The active path reported by the ATS is used to distinguish the active ATP from
+inactive fallback paths.
 
-## Dynamic discovery
+The selected card tab is preserved across Home Assistant rerenders and page
+reloads.
 
-The card is designed around the integration data rather than manually configured entity lists.
+## Requirements
 
-Areas, detectors, diagnostics, communication entities and access-control doors are resolved dynamically from the selected SPC FlexC alarm entity and its Home Assistant registry metadata.
+- Home Assistant;
+- the SPC FlexC custom integration;
+- HACS is recommended for installation and updates.
 
-This allows the same card configuration to adapt to different SPC installations and to newly discovered entities.
+The integration is available at:
 
-## Safety
+https://github.com/minimicro34/ha-spc-flexc
 
-SPC FlexC controls can change the state of a real alarm and, when access control is present, real doors.
+The custom Part Set names and access-control door view require an SPC FlexC
+integration version exposing the corresponding attributes and door entities.
 
-The card therefore enables confirmations by default:
+## Installation
+
+### HACS
+
+Add this repository as a custom repository in HACS:
+
+```text
+https://github.com/minimicro34/ha-spc-flexc-card
+```
+
+Repository type:
+
+```text
+Dashboard
+```
+
+Then install **SPC FlexC Card** and reload Home Assistant if required.
+
+### Manual installation
+
+Copy the built files:
+
+```text
+ha-spc-flexc-card.js
+ha-spc-flexc-card-base.js
+```
+
+to the same location served by Home Assistant and add
+`ha-spc-flexc-card.js` as a Lovelace JavaScript module resource.
+
+HACS installation is recommended because it handles the dashboard resource and
+updates more conveniently.
+
+## Configuration
+
+Minimal configuration:
 
 ```yaml
+type: custom:spc-flexc-card
+entity: alarm_control_panel.spc_alarm
+```
+
+Full example:
+
+```yaml
+type: custom:spc-flexc-card
+entity: alarm_control_panel.spc_alarm
+name: SPC FlexC
+show_controls: true
 confirm_actions: true
 ```
 
-Keep confirmations enabled unless you explicitly want one-tap control.
+The card also provides a visual editor in Home Assistant.
 
-Before testing door locking or permanent opening on a real installation, remain on site and keep another means of access available.
+## Options
 
-## Troubleshooting
+| Option | Required | Default | Description |
+| --- | --- | --- | --- |
+| `entity` | Yes | — | Global SPC FlexC alarm entity |
+| `name` | No | `SPC FlexC` | Card title |
+| `show_controls` | No | `true` | Display alarm and door control actions |
+| `confirm_actions` | No | `true` | Request confirmation before state-changing alarm and door actions |
 
-After upgrading the card, perform a hard browser refresh if the old frontend code is still cached.
+## Alarm and access-control safety
 
-If a view is missing information:
+SPC FlexC Card deliberately keeps state-changing operations conservative.
 
-1. verify that the corresponding entities exist in Home Assistant;
-2. confirm they belong to the same SPC FlexC configuration entry as the selected alarm entity;
-3. update SPC FlexC and this card to compatible versions;
-4. provide a Home Assistant diagnostic from the SPC FlexC integration when reporting an issue.
+Alarm and door actions are sent through native Home Assistant services and
+confirmation is enabled by default.
 
-For door-related reports, include the observed physical behavior, the values shown for **Status** and **Mode**, and a fresh SPC FlexC diagnostic whenever possible.
+The card does not attempt to bypass SPC readiness checks or force an arming
+operation rejected by the panel.
+
+Automatic retries of state-changing commands must not be implemented.
+
+Before testing access-control locking or permanent opening on a real
+installation, remain on site and keep another means of access available.
+
+## Dynamic information
+
+The exact information displayed depends on:
+
+- SPC panel model;
+- SPC firmware;
+- installed SPC hardware;
+- configured ATS/ATP paths;
+- X-BUS devices;
+- installed access-control hardware and discovered doors;
+- entities and attributes exposed by the installed SPC FlexC integration
+  version.
+
+Missing information is simply not displayed.
+
+The card does not create fictitious panel, ATS, ATP, X-BUS, door or diagnostic
+data.
 
 ## Development
 
-The source file is stored in `src/ha-spc-flexc-card.js` and the distributable file is `ha-spc-flexc-card.js`.
+The 1.0.1 source entry point is:
 
-The current 1.0.1 build loads the previous card implementation from `ha-spc-flexc-card-base.js` and layers the access-control door view on top. The source directory contains the matching base file for development builds.
+```text
+src/ha-spc-flexc-card.js
+```
 
-Run the project build/check commands before publishing a release.
+The existing card implementation is kept in:
+
+```text
+src/ha-spc-flexc-card-base.js
+```
+
+The entry point loads that base implementation and adds the dynamic
+access-control door view. This keeps the existing tested card behaviour intact
+while the door support is validated on real hardware.
+
+Then build the distributable file:
+
+```bash
+npm run build
+```
+
+Run the project checks:
+
+```bash
+npm run check
+git diff --check
+```
+
+The HACS files at the repository root are:
+
+```text
+ha-spc-flexc-card.js
+ha-spc-flexc-card-base.js
+```
+
+Do not edit generated files directly.
+
+## Contributing
+
+Contributions are welcome.
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
+
+Contributions can include:
+
+- bug fixes;
+- visual improvements;
+- support for additional SPC entities or diagnostics;
+- improved mobile and desktop layouts;
+- accessibility improvements;
+- documentation.
+
+For significant alarm-control or access-control behaviour changes, please open
+a GitHub Issue before starting a large implementation.
+
+> [!WARNING]
+> Never publish FlexC encryption keys, Command Profile passwords, SPC user
+> PINs, installer codes or other alarm credentials in Issues, Pull Requests,
+> logs or screenshots.
+
+## Disclaimer
+
+SPC FlexC Card is an independent open-source project.
+
+It is not affiliated with, endorsed by, or supported by Siemens, Vanderbilt,
+Comelit or Home Assistant.
+
+Alarm and access-control systems are security equipment. Always validate the
+behaviour of your specific panel, SPC FlexC integration and Home Assistant
+installation before relying on dashboard control.
+
+The authors and contributors cannot be held responsible for alarm activations,
+failed arming operations, access-control actions, missed information, security
+incidents or other consequences resulting from the use of this card.
+
+## Support
+
+If you find SPC FlexC Card useful and would like to support its development,
+you can buy me a coffee.
+
+<p align="center">
+  <a href="https://buymeacoffee.com/minimicro34">
+    <img
+      src="https://github.com/appcraftstudio/buymeacoffee/raw/master/Images/snapshot-bmc-button.png"
+      alt="Buy Me a Coffee"
+      width="300"
+    />
+  </a>
+</p>
+
+Your support helps me dedicate more time to improving the card, adding new
+features, testing additional SPC configurations and fixing issues.
+
+Bug reports, feature suggestions, contributions and GitHub stars are also
+greatly appreciated.
+
+Please use GitHub Issues for bug reports and feature requests.
+
+When reporting an issue, please include whenever possible:
+
+- SPC FlexC Card version;
+- SPC FlexC integration version;
+- Home Assistant version;
+- browser and device type;
+- a clear description of the problem;
+- screenshots when relevant;
+- relevant browser console errors;
+- relevant Home Assistant entity states or attributes.
+
+For display or entity-discovery problems, please also indicate which card view
+is affected:
+
+- General;
+- Areas;
+- Detectors;
+- Doors;
+- System.
+
+For door-related reports, include the observed physical behaviour and the raw
+`Status` / `Mode` values after each tested command whenever possible. A fresh
+SPC FlexC diagnostic is particularly useful for validating access-control
+support.
+
+Never include passwords, PINs, FlexC encryption keys or other alarm
+credentials.
+
+## Related project
+
+SPC FlexC Home Assistant integration:
+
+https://github.com/minimicro34/ha-spc-flexc
 
 ## License
 
-See [LICENSE](LICENSE).
+Copyright © 2026 minimicro34.
+
+This project is licensed under the [GNU General Public License v3.0 or later](LICENSE).
