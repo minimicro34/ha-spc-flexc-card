@@ -96,11 +96,13 @@ For each area, the card can display:
 
 - current arming state;
 - Arm or Disarm action according to the current state;
-- Part Set A when supported by the area;
-- Part Set B when supported by the area;
+- Part Set A when supported by the area, using the custom SPC name exposed by the integration when available;
+- Part Set B when supported by the area, using the custom SPC name exposed by the integration when available;
 - last Set / Unset information;
 - localized date and time;
 - user name, with user ID as fallback.
+
+When the integration exposes custom partial-set names from the SPC panel, the card uses them for the corresponding controls and armed-state labels. Otherwise it falls back to `Partiel A` and `Partiel B`.
 
 The SPC panel remains authoritative for arming availability and validation.
 
