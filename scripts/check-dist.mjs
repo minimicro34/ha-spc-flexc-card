@@ -1,14 +1,12 @@
 import { readFile } from "node:fs/promises";
 
-const source = await readFile(
-  "src/ha-spc-flexc-card.js",
-  "utf8"
-);
+const [core, outputs, distribution] = await Promise.all([
+  readFile("src/ha-spc-flexc-card.js", "utf8"),
+  readFile("src/spc-flexc-outputs.js", "utf8"),
+  readFile("ha-spc-flexc-card.js", "utf8"),
+]);
 
-const distribution = await readFile(
-  "ha-spc-flexc-card.js",
-  "utf8"
-);
+const source = `${core.trimEnd()}\n\n${outputs.trimStart()}`;
 
 if (source !== distribution) {
   console.error(
