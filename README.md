@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  🔐 Alarm control • 🏠 Areas • 🚪 Detectors • 🚪 Access-control doors • 📡 FlexC • 🩺 Diagnostics
+  🔐 Alarm control • 🏠 Areas • 🚪 Detectors • 🚪 Access-control doors • 🔌 Mapping Gate outputs • 📡 FlexC • 🩺 Diagnostics
 </p>
 
 SPC FlexC Card is a custom Home Assistant dashboard card designed for the
@@ -24,8 +24,8 @@ It provides a dedicated interface for everyday alarm control while keeping
 technical SPC and FlexC information available in a separate system view.
 
 > [!IMPORTANT]
-> This card can trigger alarm and access-control state-changing services.
-> Confirmation dialogs are enabled by default.
+> This card can trigger alarm, Mapping Gate and access-control state-changing
+> services. Confirmation dialogs are enabled by default for supported actions.
 
 ## Screenshots
 
@@ -48,7 +48,8 @@ technical SPC and FlexC information available in a separate system view.
 ![SPC FlexC Card - System view 2](images/system2.png)
 
 > The Doors view is displayed only when the SPC FlexC integration discovers at
-> least one SPC access-control door.
+> least one SPC access-control door. The Outputs view is displayed only when at
+> least one SPC Mapping Gate is exposed by the integration.
 
 ---
 ## Contents
@@ -59,6 +60,7 @@ technical SPC and FlexC information available in a separate system view.
   - [Areas](#areas)
   - [Detectors](#detectors)
   - [Doors](#doors)
+  - [Outputs / Mapping Gates](#outputs--mapping-gates)
   - [System](#system)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -66,7 +68,7 @@ technical SPC and FlexC information available in a separate system view.
   - [Manual installation](#manual-installation)
 - [Configuration](#configuration)
 - [Options](#options)
-- [Alarm and access-control safety](#alarm-and-access-control-safety)
+- [Alarm, Mapping Gate and access-control safety](#alarm-mapping-gate-and-access-control-safety)
 - [Dynamic information](#dynamic-information)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -77,8 +79,9 @@ technical SPC and FlexC information available in a separate system view.
 
 ## Features
 
-SPC FlexC Card provides four core views and adds a fifth **Doors** view when
-access-control doors are available.
+SPC FlexC Card provides the main alarm, area, detector and system views, and
+adds **Doors** and **Outputs** tabs dynamically when the corresponding SPC
+objects are available.
 
 ### General
 
@@ -140,25 +143,56 @@ For each discovered door, the card can display:
 - the SPC door name, using the associated zone name when available;
 - the associated areas, for example `Garage ↔ Studio`;
 - the associated SPC zone;
-- the raw SPC `Status` value;
-- the raw SPC `Mode` value.
+- the SPC `Status` value;
+- the SPC `Mode` value;
+- DPS and DRS input values when exposed by the integration.
 
-When the corresponding native Home Assistant button entities are exposed by
-SPC FlexC, four controls are available:
+The following door mode values have been validated on real SPC hardware and
+are displayed with labels by the card:
 
-- **Ouverture momentanée**;
-- **Ouverture permanente**;
-- **Retour au mode normal**;
-- **Verrouiller**.
+- `0` — Normal;
+- `1` — Access forbidden;
+- `2` — Free access.
 
-No manual door sensor or button `entity_id` configuration is required. The
-card resolves them from the SPC FlexC configuration entry and Home Assistant
-entity registry metadata.
+The door view is intentionally treated primarily as a supervision view. FlexC
+door commands can change the logical door mode reported by the panel, but that
+does not by itself guarantee that a physical lock, relay, Nuki integration or
+other access-control actuator will operate. Physical behaviour depends on the
+SPC installation and its access-control programming.
 
-> [!NOTE]
-> Door `Status` and `Mode` are intentionally displayed as raw values while the
-> numeric mappings are being validated on real SPC access-control hardware.
-> The card does not guess meanings such as locked, unlocked or open.
+No manual door sensor `entity_id` configuration is required. The card resolves
+door entities from the SPC FlexC configuration entry and Home Assistant entity
+registry metadata.
+
+### Outputs / Mapping Gates
+
+The **Outputs** tab is automatically displayed when the SPC FlexC integration
+exposes at least one Mapping Gate.
+
+The word **Output** in this view refers to an SPC **Mapping Gate**. Mapping Gates
+are logical outputs / logical interactions managed by the SPC panel. They must
+not be confused with the panel's physical OP terminals.
+
+A Mapping Gate can be programmed in SPC to drive a physical output or another
+panel function, so changing a Mapping Gate can have a real physical effect when
+the installer configuration maps it accordingly. That association is panel
+configuration, however, and the card does not assume a one-to-one relationship
+between Mapping Gates and physical outputs.
+
+For each Mapping Gate, the card displays:
+
+- the configured Mapping Gate name;
+- its Mapping Gate ID;
+- its current ON/OFF state;
+- explicit **ON** and **OFF** controls on the same row.
+
+The controls call the native Home Assistant `switch.turn_on` and
+`switch.turn_off` services on the Mapping Gate switch entity exposed by the SPC
+FlexC integration. No manual Mapping Gate `entity_id` configuration is required.
+
+If a Mapping Gate is configured in SPC as local-only or without the required
+FlexC reporting/control permissions, its availability or remote control can be
+limited by the panel configuration.
 
 ### System
 
@@ -202,8 +236,9 @@ The integration is available at:
 
 https://github.com/minimicro34/ha-spc-flexc
 
-The custom Part Set names and access-control door view require an SPC FlexC
-integration version exposing the corresponding attributes and door entities.
+Custom Part Set names, access-control door information and Mapping Gate outputs
+require an SPC FlexC integration version exposing the corresponding entities and
+attributes.
 
 ## Installation
 
@@ -264,23 +299,29 @@ The card also provides a visual editor in Home Assistant.
 | --- | --- | --- | --- |
 | `entity` | Yes | — | Global SPC FlexC alarm entity |
 | `name` | No | `SPC FlexC` | Card title |
-| `show_controls` | No | `true` | Display alarm and door control actions |
-| `confirm_actions` | No | `true` | Request confirmation before state-changing alarm and door actions |
+| `show_controls` | No | `true` | Display supported alarm and Mapping Gate control actions |
+| `confirm_actions` | No | `true` | Request confirmation before supported state-changing actions |
 
-## Alarm and access-control safety
+## Alarm, Mapping Gate and access-control safety
 
 SPC FlexC Card deliberately keeps state-changing operations conservative.
 
-Alarm and door actions are sent through native Home Assistant services and
-confirmation is enabled by default.
+Alarm and Mapping Gate actions are sent through native Home Assistant services.
+The SPC panel remains authoritative for the resulting state and for any action
+that its own configuration rejects.
 
 The card does not attempt to bypass SPC readiness checks or force an arming
 operation rejected by the panel.
 
 Automatic retries of state-changing commands must not be implemented.
 
-Before testing access-control locking or permanent opening on a real
-installation, remain on site and keep another means of access available.
+Mapping Gates are logical panel objects. Before controlling one, verify in SPC
+what it is mapped to. A Mapping Gate can be associated with a siren, relay,
+physical output, access-control function or another programmed interaction.
+
+Door mode changes must not be interpreted as proof that a physical door or lock
+has actuated. Physical access-control behaviour depends on the installed
+hardware and SPC programming.
 
 ## Dynamic information
 
@@ -292,20 +333,28 @@ The exact information displayed depends on:
 - configured ATS/ATP paths;
 - X-BUS devices;
 - installed access-control hardware and discovered doors;
+- configured Mapping Gates;
+- FlexC reporting and control permissions;
 - entities and attributes exposed by the installed SPC FlexC integration
   version.
 
 Missing information is simply not displayed.
 
-The card does not create fictitious panel, ATS, ATP, X-BUS, door or diagnostic
-data.
+The card does not create fictitious panel, ATS, ATP, X-BUS, door, Mapping Gate
+or diagnostic data.
 
 ## Development
 
-The card source is maintained in:
+The main card source is maintained in:
 
 ```text
 src/ha-spc-flexc-card.js
+```
+
+Mapping Gate / Outputs support is maintained in:
+
+```text
+src/spc-flexc-outputs.js
 ```
 
 Build the distributable file with:
@@ -327,10 +376,11 @@ npm run check
 git diff --check
 ```
 
-`npm run check` verifies the source syntax and confirms that the generated
-distribution file is up to date.
+`npm run check` verifies both JavaScript source files and confirms that the
+generated distribution file is up to date and carries the expected card
+version.
 
-Do not edit the generated root file directly; edit the source under `src/` and
+Do not edit the generated root file directly; edit the sources under `src/` and
 run `npm run build` instead.
 
 ## Contributing
@@ -348,8 +398,8 @@ Contributions can include:
 - accessibility improvements;
 - documentation.
 
-For significant alarm-control or access-control behaviour changes, please open
-a GitHub Issue before starting a large implementation.
+For significant alarm-control, Mapping Gate or access-control behaviour changes,
+please open a GitHub Issue before starting a large implementation.
 
 > [!WARNING]
 > Never publish FlexC encryption keys, Command Profile passwords, SPC user
@@ -368,8 +418,9 @@ behaviour of your specific panel, SPC FlexC integration and Home Assistant
 installation before relying on dashboard control.
 
 The authors and contributors cannot be held responsible for alarm activations,
-failed arming operations, access-control actions, missed information, security
-incidents or other consequences resulting from the use of this card.
+failed arming operations, Mapping Gate actions, access-control actions, missed
+information, security incidents or other consequences resulting from the use of
+this card.
 
 ## Support
 
@@ -412,12 +463,15 @@ is affected:
 - Areas;
 - Detectors;
 - Doors;
+- Outputs;
 - System.
 
 For door-related reports, include the observed physical behaviour and the raw
-`Status` / `Mode` values after each tested command whenever possible. A fresh
-SPC FlexC diagnostic is particularly useful for validating access-control
-support.
+`Status`, `Mode`, DPS and DRS values whenever possible.
+
+For output-related reports, include the Mapping Gate ID, configured Mapping Gate
+name, observed ON/OFF state and, when relevant, what that Mapping Gate is mapped
+to in the SPC configuration.
 
 Never include passwords, PINs, FlexC encryption keys or other alarm
 credentials.
