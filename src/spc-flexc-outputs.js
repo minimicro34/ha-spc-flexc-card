@@ -1,6 +1,7 @@
-/* SPC FlexC Card v1.0.2 extensions: Mapping Gates and door supervision. */
+/* SPC FlexC Card v1.0.2 extensions: Mapping Gates, door supervision and zone inhibition. */
 
 const spcFlexCBaseLoadActiveTab = SpcFlexCCard.prototype._loadActiveTab;
+const spcFlexCBaseGetZones = SpcFlexCCard.prototype._getZones;
 const spcFlexCBaseGetDoors = SpcFlexCCard.prototype._getDoors;
 const spcFlexCBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCBaseRender = SpcFlexCCard.prototype._render;
@@ -54,6 +55,72 @@ SpcFlexCCard.prototype._getMappingGates = function () {
       };
     })
     .sort((a, b) => Number(a.id) - Number(b.id));
+};
+
+SpcFlexCCard.prototype._getZones = function () {
+  const zones = spcFlexCBaseGetZones.call(this);
+  if (!this._hass || !zones.length) return zones;
+
+  const byId = new Map(zones.map((zone) => [String(zone.zoneId), zone]));
+  const scoped = this._scopedStates(true);
+  const candidates = scoped.length
+    ? scoped
+    : Object.entries(this._hass.states).map(([entityId, stateObj]) => ({
+        entityId,
+        stateObj,
+        registryEntry: null,
+      }));
+
+  for (const { entityId, stateObj, registryEntry } of candidates) {
+    if (!entityId.startsWith("switch.")) continue;
+
+    const attrs = stateObj?.attributes || {};
+    const uniqueId = String(registryEntry?.unique_id || "");
+    const match = uniqueId.match(/_zone_(\d+)_inhibition$/);
+    const zoneId = attrs.zone_id ?? match?.[1] ?? null;
+
+    if (zoneId == null) continue;
+    if (!match && attrs.zone_id == null) continue;
+
+    const zone = byId.get(String(zoneId));
+    if (!zone) continue;
+
+    zone.inhibited = stateObj.state === "on";
+    zone.inhibitionEntityId = entityId;
+  }
+
+  return zones;
+};
+
+SpcFlexCCard.prototype._renderZoneRow = function (zone) {
+  const stateInfo = this._zoneStateInfo(zone);
+  const inhibited = zone.inhibited === true;
+  const active = zone.state === "on";
+  const visualClass = inhibited
+    ? active
+      ? "danger"
+      : "warning"
+    : stateInfo.className;
+
+  return `
+    <div class="zone-row${inhibited ? " zone-row-inhibited" : ""}">
+      <div class="zone-icon ${visualClass}">
+        <ha-icon icon="${this._escapeHtml(this._zoneIcon(zone))}"></ha-icon>
+      </div>
+
+      <div class="zone-main">
+        <div class="zone-name">${this._escapeHtml(zone.name)}</div>
+        <div class="zone-area">
+          ${this._escapeHtml(this._areaName(zone.areaId))}
+          ${inhibited ? '<span class="zone-operating-badge warning">INHIBÉ</span>' : ""}
+        </div>
+      </div>
+
+      <div class="zone-state ${visualClass}">
+        ${this._escapeHtml(stateInfo.label)}
+      </div>
+    </div>
+  `;
 };
 
 SpcFlexCCard.prototype._getDoors = function () {
@@ -229,6 +296,22 @@ SpcFlexCCard.prototype._callMappingGate = async function (entityId, name, action
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCBaseStyles.call(this)}
     <style>
+      .zone-operating-badge {
+        display:inline-flex;
+        align-items:center;
+        margin-left:7px;
+        padding:1px 6px;
+        border:1px solid currentColor;
+        border-radius:999px;
+        font-size:9px;
+        font-weight:800;
+        letter-spacing:.04em;
+        line-height:1.5;
+        vertical-align:1px;
+      }
+      .zone-row-inhibited {
+        box-shadow:inset 3px 0 0 color-mix(in srgb,currentColor 55%,transparent);
+      }
       .outputs-view { display:grid; gap:12px; }
       .output-list { display:grid; gap:7px; }
       .output-row {
