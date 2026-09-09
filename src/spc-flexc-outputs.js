@@ -20,7 +20,18 @@ SpcFlexCCard.prototype._loadActiveTab = function (entityId) {
 };
 
 SpcFlexCCard.prototype._getMappingGates = function () {
-  return this._scopedStates(true)
+  if (!this._hass) return [];
+
+  const scoped = this._scopedStates(true);
+  const candidates = scoped.length
+    ? scoped
+    : Object.entries(this._hass.states).map(([entityId, stateObj]) => ({
+        entityId,
+        stateObj,
+        registryEntry: null,
+      }));
+
+  return candidates
     .filter(({ entityId, stateObj, registryEntry }) => {
       if (!entityId.startsWith("switch.")) return false;
       const attrs = stateObj?.attributes || {};
