@@ -1,101 +1,10 @@
-/* SPC FlexC Card v1.0.2 extensions: Mapping Gates, door supervision and zone inhibition. */
+/* SPC FlexC Card v1.0.3 extensions: Mapping Gates, door supervision and zone inhibition. */
 
 const spcFlexCBaseLoadActiveTab = SpcFlexCCard.prototype._loadActiveTab;
 const spcFlexCBaseGetZones = SpcFlexCCard.prototype._getZones;
 const spcFlexCBaseGetDoors = SpcFlexCCard.prototype._getDoors;
 const spcFlexCBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCBaseRender = SpcFlexCCard.prototype._render;
-const spcFlexCHassDescriptor = Object.getOwnPropertyDescriptor(
-  SpcFlexCCard.prototype,
-  "hass"
-);
-const spcFlexCBaseConnectedCallback = SpcFlexCCard.prototype.connectedCallback;
-const spcFlexCBaseDisconnectedCallback = SpcFlexCCard.prototype.disconnectedCallback;
-
-SpcFlexCCard.prototype._ensureStateSubscription = async function () {
-  if (
-    this._spcStateUnsubscribe ||
-    this._spcStateSubscriptionPending ||
-    !this._hass?.connection?.subscribeEvents
-  ) {
-    return;
-  }
-
-  this._spcStateSubscriptionPending = true;
-
-  try {
-    const unsubscribe = await this._hass.connection.subscribeEvents(
-      (event) => {
-        const entityId = event?.data?.entity_id;
-        const newState = event?.data?.new_state || null;
-        const oldState = event?.data?.old_state || null;
-        const attrs = newState?.attributes || oldState?.attributes || {};
-        const isSpcZone =
-          entityId?.startsWith("binary_sensor.") &&
-          attrs.zone_id != null &&
-          attrs.area_id != null &&
-          attrs.spc_zone_type != null;
-
-        if (!isSpcZone) {
-          return;
-        }
-
-        this._spcLiveStates ||= new Map();
-
-        if (newState) {
-          this._spcLiveStates.set(entityId, newState);
-        } else {
-          this._spcLiveStates.delete(entityId);
-        }
-
-        if (this.isConnected) {
-          this._render();
-        }
-      },
-      "state_changed"
-    );
-
-    if (!this.isConnected) {
-      unsubscribe();
-      return;
-    }
-
-    this._spcStateUnsubscribe = unsubscribe;
-  } catch (error) {
-    console.warn(
-      "SPC FlexC Card: unable to subscribe to live zone state changes",
-      error
-    );
-  } finally {
-    this._spcStateSubscriptionPending = false;
-  }
-};
-
-Object.defineProperty(SpcFlexCCard.prototype, "hass", {
-  configurable: true,
-  set(hass) {
-    spcFlexCHassDescriptor.set.call(this, hass);
-    this._ensureStateSubscription();
-  },
-});
-
-SpcFlexCCard.prototype.connectedCallback = function () {
-  if (spcFlexCBaseConnectedCallback) {
-    spcFlexCBaseConnectedCallback.call(this);
-  }
-  this._ensureStateSubscription();
-};
-
-SpcFlexCCard.prototype.disconnectedCallback = function () {
-  if (this._spcStateUnsubscribe) {
-    this._spcStateUnsubscribe();
-    this._spcStateUnsubscribe = null;
-  }
-
-  if (spcFlexCBaseDisconnectedCallback) {
-    spcFlexCBaseDisconnectedCallback.call(this);
-  }
-};
 
 SpcFlexCCard.prototype._loadActiveTab = function (entityId) {
   const value = spcFlexCBaseLoadActiveTab.call(this, entityId);
@@ -149,32 +58,8 @@ SpcFlexCCard.prototype._getMappingGates = function () {
 };
 
 SpcFlexCCard.prototype._getZones = function () {
-  if (!this._hass) return [];
-
-  const originalHass = this._hass;
-  let zones;
-
-  if (this._spcLiveStates?.size) {
-    const states = { ...originalHass.states };
-    for (const [entityId, stateObj] of this._spcLiveStates) {
-      states[entityId] = stateObj;
-    }
-
-    this._hass = {
-      ...originalHass,
-      states,
-    };
-
-    try {
-      zones = spcFlexCBaseGetZones.call(this);
-    } finally {
-      this._hass = originalHass;
-    }
-  } else {
-    zones = spcFlexCBaseGetZones.call(this);
-  }
-
-  if (!zones.length) return zones;
+  const zones = spcFlexCBaseGetZones.call(this);
+  if (!this._hass || !zones.length) return zones;
 
   const byId = new Map(zones.map((zone) => [String(zone.zoneId), zone]));
   const scoped = this._scopedStates(true);
