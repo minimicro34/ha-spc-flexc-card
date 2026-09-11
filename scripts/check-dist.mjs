@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-const CARD_VERSION = "1.0.2";
+const CARD_VERSION = "1.0.3";
 const [coreSource, outputs, distribution] = await Promise.all([
   readFile("src/ha-spc-flexc-card.js", "utf8"),
   readFile("src/spc-flexc-outputs.js", "utf8"),
