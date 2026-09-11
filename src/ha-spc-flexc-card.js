@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.1";
+const CARD_VERSION = "1.0.3";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -49,8 +49,109 @@ class SpcFlexCCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._reconcileLiveZoneStates();
     this._render();
     this._ensureDiagnosticScope();
+    this._ensureStateSubscription();
+  }
+
+  connectedCallback() {
+    this._ensureStateSubscription();
+  }
+
+  disconnectedCallback() {
+    if (this._spcStateUnsubscribe) {
+      this._spcStateUnsubscribe();
+      this._spcStateUnsubscribe = null;
+    }
+  }
+
+  _reconcileLiveZoneStates() {
+    if (!this._spcLiveStates?.size || !this._hass?.states) {
+      return;
+    }
+
+    for (const [entityId, liveState] of this._spcLiveStates) {
+      const currentState = this._hass.states[entityId];
+
+      if (!currentState) {
+        continue;
+      }
+
+      const currentUpdated = Date.parse(currentState.last_updated || "");
+      const liveUpdated = Date.parse(liveState.last_updated || "");
+
+      if (
+        currentState === liveState ||
+        (
+          Number.isFinite(currentUpdated) &&
+          Number.isFinite(liveUpdated) &&
+          currentUpdated >= liveUpdated
+        )
+      ) {
+        this._spcLiveStates.delete(entityId);
+      }
+    }
+  }
+
+  async _ensureStateSubscription() {
+    if (
+      this._spcStateUnsubscribe ||
+      this._spcStateSubscriptionPending ||
+      !this.isConnected ||
+      !this._hass?.connection?.subscribeEvents
+    ) {
+      return;
+    }
+
+    this._spcStateSubscriptionPending = true;
+
+    try {
+      const unsubscribe = await this._hass.connection.subscribeEvents(
+        (event) => {
+          const entityId = event?.data?.entity_id;
+          const newState = event?.data?.new_state || null;
+          const oldState = event?.data?.old_state || null;
+          const attrs = newState?.attributes || oldState?.attributes || {};
+          const isSpcZone =
+            entityId?.startsWith("binary_sensor.") &&
+            attrs.zone_id != null &&
+            attrs.area_id != null &&
+            attrs.spc_zone_type != null;
+
+          if (!isSpcZone) {
+            return;
+          }
+
+          this._spcLiveStates ||= new Map();
+
+          if (newState) {
+            this._spcLiveStates.set(entityId, newState);
+          } else {
+            this._spcLiveStates.delete(entityId);
+          }
+
+          if (this.isConnected) {
+            this._render();
+          }
+        },
+        "state_changed"
+      );
+
+      if (!this.isConnected) {
+        unsubscribe();
+        return;
+      }
+
+      this._spcStateUnsubscribe = unsubscribe;
+    } catch (error) {
+      console.warn(
+        "SPC FlexC Card: unable to subscribe to live zone state changes",
+        error
+      );
+    } finally {
+      this._spcStateSubscriptionPending = false;
+    }
   }
 
   _activeTabStorageKey(entityId = this._config?.entity) {
@@ -304,7 +405,15 @@ class SpcFlexCCard extends HTMLElement {
       return [];
     }
 
-    return Object.entries(this._hass.states)
+    const states = { ...this._hass.states };
+
+    if (this._spcLiveStates?.size) {
+      for (const [entityId, stateObj] of this._spcLiveStates) {
+        states[entityId] = stateObj;
+      }
+    }
+
+    return Object.entries(states)
       .filter(([entityId, stateObj]) => {
         if (!entityId.startsWith("binary_sensor.")) {
           return false;
