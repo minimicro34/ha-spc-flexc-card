@@ -1,4 +1,4 @@
-/* SPC FlexC Card zone grouping extension. */
+/* SPC FlexC Card v1.0.5 zone grouping extension. */
 
 const spcFlexCZoneGroupsBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCZoneGroupsBaseRender = SpcFlexCCard.prototype._render;
@@ -107,7 +107,7 @@ SpcFlexCCard.prototype._renderZones = function () {
     return `
       <div class="empty-state">
         <ha-icon icon="mdi:motion-sensor-off"></ha-icon>
-        <div>Aucune zone SPC découverte.</div>
+        <div>${this._t("zone.none")}</div>
       </div>
     `;
   }
@@ -120,7 +120,7 @@ SpcFlexCCard.prototype._renderZones = function () {
     <div class="zones-view grouped-zones-view">
       <div class="zone-groups-toolbar">
         <div class="group-title">
-          Détecteurs
+          ${this._t("group.detectors")}
           <span>${totalZones}</span>
         </div>
         <button
@@ -128,7 +128,7 @@ SpcFlexCCard.prototype._renderZones = function () {
           class="zone-groups-toggle-all"
           data-zone-groups-action="${allExpanded ? "collapse" : "expand"}"
         >
-          ${allExpanded ? "Tout réduire" : "Tout développer"}
+          ${this._t(allExpanded ? "group.collapse_all" : "group.expand_all")}
         </button>
       </div>
 
@@ -165,16 +165,16 @@ SpcFlexCCard.prototype._renderZones = function () {
                 <div class="zone-group-title-wrap">
                   <div class="zone-group-title">${this._escapeHtml(group.name)}</div>
                   <div class="zone-group-meta">
-                    ${normalZones.length} détecteur${normalZones.length > 1 ? "s" : ""}
-                    ${tampers.length ? ` · ${tampers.length} autoprotection${tampers.length > 1 ? "s" : ""}` : ""}
+                    ${this._tCount("group.detector_count", normalZones.length)}
+                    ${tampers.length ? ` · ${this._tCount("group.tamper_count", tampers.length)}` : ""}
                   </div>
                 </div>
 
                 <div class="zone-group-summary">
-                  ${activeZones ? `<span class="warning">${activeZones} actif${activeZones > 1 ? "s" : ""}</span>` : ""}
-                  ${activeTampers ? `<span class="danger">${activeTampers} défaut${activeTampers > 1 ? "s" : ""}</span>` : ""}
-                  ${unavailable ? `<span class="muted">${unavailable} indisponible${unavailable > 1 ? "s" : ""}</span>` : ""}
-                  ${!activeZones && !activeTampers && !unavailable ? '<span class="ok">Au repos</span>' : ""}
+                  ${activeZones ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>` : ""}
+                  ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
+                  ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
+                  ${!activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
                 </div>
               </button>
 
@@ -188,7 +188,7 @@ SpcFlexCCard.prototype._renderZones = function () {
 
                   ${tampers.length ? `
                     <div class="group-title tamper-title">
-                      Autoprotections
+                      ${this._t("group.tampers")}
                       <span>${tampers.length}</span>
                     </div>
                     <div class="zone-list tamper-list">
@@ -208,88 +208,24 @@ SpcFlexCCard.prototype._renderZones = function () {
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCZoneGroupsBaseStyles.call(this)}
     <style>
-      .zone-groups-toolbar {
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:12px;
-      }
-      .zone-groups-toggle-all,
-      .zone-group-header {
-        appearance:none;
-        border:0;
-        font:inherit;
-        color:inherit;
-        cursor:pointer;
-      }
-      .zone-groups-toggle-all {
-        padding:6px 9px;
-        border-radius:8px;
-        background:var(--secondary-background-color,rgba(127,127,127,.08));
-        color:var(--primary-color);
-        font-size:12px;
-        font-weight:700;
-      }
+      .zone-groups-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .zone-groups-toggle-all, .zone-group-header { appearance:none; border:0; font:inherit; color:inherit; cursor:pointer; }
+      .zone-groups-toggle-all { padding:6px 9px; border-radius:8px; background:var(--secondary-background-color,rgba(127,127,127,.08)); color:var(--primary-color); font-size:12px; font-weight:700; }
       .zone-groups-list { display:grid; gap:10px; }
-      .zone-group {
-        overflow:hidden;
-        border:1px solid var(--divider-color);
-        border-radius:12px;
-      }
-      .zone-group-header {
-        display:grid;
-        grid-template-columns:28px minmax(0,1fr) auto;
-        align-items:center;
-        gap:10px;
-        width:100%;
-        padding:12px;
-        background:var(--secondary-background-color,rgba(127,127,127,.06));
-        text-align:left;
-      }
-      .zone-group-header:hover {
-        background:var(--secondary-background-color,rgba(127,127,127,.1));
-      }
+      .zone-group { overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; }
+      .zone-group-header { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:10px; width:100%; padding:12px; background:var(--secondary-background-color,rgba(127,127,127,.06)); text-align:left; }
+      .zone-group-header:hover { background:var(--secondary-background-color,rgba(127,127,127,.1)); }
       .zone-group-chevron { --mdc-icon-size:22px; color:var(--secondary-text-color); }
       .zone-group-title-wrap { min-width:0; }
-      .zone-group-title {
-        overflow:hidden;
-        font-size:15px;
-        font-weight:700;
-        text-overflow:ellipsis;
-        white-space:nowrap;
-      }
-      .zone-group-meta {
-        margin-top:2px;
-        color:var(--secondary-text-color);
-        font-size:11px;
-      }
-      .zone-group-summary {
-        display:flex;
-        justify-content:flex-end;
-        flex-wrap:wrap;
-        gap:4px 9px;
-        font-size:12px;
-        font-weight:700;
-        text-align:right;
-      }
-      .zone-group-content {
-        display:grid;
-        gap:8px;
-        padding:9px;
-      }
+      .zone-group-title { overflow:hidden; font-size:15px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+      .zone-group-meta { margin-top:2px; color:var(--secondary-text-color); font-size:11px; }
+      .zone-group-summary { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:4px 9px; font-size:12px; font-weight:700; text-align:right; }
+      .zone-group-content { display:grid; gap:8px; padding:9px; }
       .zone-group-content .tamper-title { margin:8px 3px 0; }
       @media (max-width:520px) {
-        .zone-group-header {
-          grid-template-columns:24px minmax(0,1fr);
-        }
-        .zone-group-summary {
-          grid-column:2;
-          justify-content:flex-start;
-          text-align:left;
-        }
-        .zone-groups-toolbar {
-          align-items:flex-start;
-        }
+        .zone-group-header { grid-template-columns:24px minmax(0,1fr); }
+        .zone-group-summary { grid-column:2; justify-content:flex-start; text-align:left; }
+        .zone-groups-toolbar { align-items:flex-start; }
       }
     </style>`;
 };
@@ -310,9 +246,7 @@ SpcFlexCCard.prototype._render = function () {
     button.addEventListener("click", () => {
       const expand = button.dataset.zoneGroupsAction === "expand";
       const groups = this._getZoneGroups();
-      for (const group of groups) {
-        this._setZoneGroupExpanded(group.id, expand);
-      }
+      for (const group of groups) this._setZoneGroupExpanded(group.id, expand);
       this._render();
     });
   });
