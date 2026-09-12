@@ -3936,15 +3936,18 @@ SpcFlexCCard.prototype._renderZones = function () {
           const tampers = group.zones.filter(
             (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
           );
-          const inhibitedZones = group.zones.filter((zone) =>
-            this._zoneIsInhibited(zone)
+          const inhibitedLabel = this._t("zone.inhibited");
+          const zoneIsDisplayedAsInhibited = (zone) =>
+            this._zoneStateInfo(zone)?.label === inhibitedLabel;
+          const inhibitedZones = group.zones.filter(
+            zoneIsDisplayedAsInhibited
           ).length;
           const activeZones = normalZones.filter(
-            (zone) => zone.state === "on" && !this._zoneIsInhibited(zone)
+            (zone) => zone.state === "on" && !zoneIsDisplayedAsInhibited(zone)
           ).length;
           const activeTampers = tampers.filter(
             (zone) =>
-              !this._zoneIsInhibited(zone) &&
+              !zoneIsDisplayedAsInhibited(zone) &&
               (zone.state === "on" || zone.eventTamper === true)
           ).length;
           const unavailable = group.zones.filter(
