@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.0.4]
+## [1.0.4] - 2026-09-12
 
 ### Changed
 
@@ -16,7 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved render scheduling into its own source module to keep it separate from SPC Outputs-specific functionality.
 - Updated build and validation scripts for the additional source module.
 
-## [1.0.3]
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.3...v1.0.4
+
+## [1.0.3] - 2026-09-11
 
 ### Added
 
@@ -33,6 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Improved reliability of zone state updates when the card did not visually refresh despite Home Assistant already having received the new zone state.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.2...v1.0.3
 
 ## [1.0.2] - 2026-09-09
 
