@@ -182,8 +182,8 @@ SpcFlexCCard.prototype._renderZones = function () {
                 </div>
 
                 <div class="zone-group-summary">
-                  ${inhibitedZones ? `<span class="warning">${inhibitedZones} ${this._t("zone.inhibited")}</span>` : ""}
-                  ${activeZones ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>` : ""}
+                  ${inhibitedZones ? `<span class="zone-inhibited">${inhibitedZones} ${this._t("zone.inhibited")}</span>` : ""}
+                  ${activeZones ? `<span class="danger">${this._tCount("group.active_count", activeZones)}</span>` : ""}
                   ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
                   ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
                   ${!inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
@@ -220,6 +220,7 @@ SpcFlexCCard.prototype._renderZones = function () {
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCZoneGroupsBaseStyles.call(this)}
     <style>
+      .zone-inhibited { color:var(--spc-flexc-inhibited-color,#f6b73c); }
       .zone-groups-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
       .zone-groups-toggle-all, .zone-group-header { appearance:none; border:0; font:inherit; color:inherit; cursor:pointer; }
       .zone-groups-toggle-all { padding:6px 9px; border-radius:8px; background:var(--secondary-background-color,rgba(127,127,127,.08)); color:var(--primary-color); font-size:12px; font-weight:700; }
