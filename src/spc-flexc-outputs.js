@@ -220,6 +220,13 @@ SpcFlexCCard.prototype._renderOutputs = function () {
         ${outputs.map((output) => {
           const isOn = output.state === "on";
           const unavailable = ["unknown", "unavailable"].includes(output.state);
+          const stateLabel = output.state === "unavailable"
+            ? this._t("state.unavailable")
+            : output.state === "unknown"
+              ? this._t("state.unknown_short")
+              : isOn
+                ? this._t("state.on")
+                : this._t("state.off");
           return `
             <div class="output-row">
               <div class="output-icon ${unavailable ? "muted" : isOn ? "ok" : "muted"}">
@@ -230,16 +237,16 @@ SpcFlexCCard.prototype._renderOutputs = function () {
                 <div class="output-id">${this._t("output.mapping_gate")} ${this._escapeHtml(output.id ?? "—")}</div>
               </div>
               <div class="output-state ${unavailable ? "muted" : isOn ? "ok" : "muted"}">
-                ${unavailable ? this._escapeHtml(output.state) : isOn ? "ON" : "OFF"}
+                ${this._escapeHtml(stateLabel)}
               </div>
               ${this._config.show_controls === false ? "" : `
                 <div class="output-controls">
                   <button type="button" class="output-button${isOn ? " active" : ""}"
                     data-mg-entity="${this._escapeHtml(output.entityId)}"
-                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="on">ON</button>
+                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="on">${this._t("state.on")}</button>
                   <button type="button" class="output-button${!isOn && !unavailable ? " active" : ""}"
                     data-mg-entity="${this._escapeHtml(output.entityId)}"
-                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="off">OFF</button>
+                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="off">${this._t("state.off")}</button>
                 </div>
               `}
             </div>
