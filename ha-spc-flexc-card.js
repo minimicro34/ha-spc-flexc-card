@@ -3514,7 +3514,7 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
         <div class="zone-name">${this._escapeHtml(zone.name)}</div>
         <div class="zone-area">
           ${this._escapeHtml(this._areaName(zone.areaId))}
-          ${inhibited ? `<span class="zone-operating-badge warning">${this._t("zone.inhibited")}</span>` : ""}
+          ${inhibited ? `<span class="zone-operating-badge zone-inhibited">${this._t("zone.inhibited")}</span>` : ""}
         </div>
       </div>
 
@@ -3961,8 +3961,8 @@ SpcFlexCCard.prototype._renderZones = function () {
                 </div>
 
                 <div class="zone-group-summary">
-                  ${inhibitedZones ? `<span class="warning">${inhibitedZones} ${this._t("zone.inhibited")}</span>` : ""}
-                  ${activeZones ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>` : ""}
+                  ${inhibitedZones ? `<span class="zone-inhibited">${inhibitedZones} ${this._t("zone.inhibited")}</span>` : ""}
+                  ${activeZones ? `<span class="danger">${this._tCount("group.active_count", activeZones)}</span>` : ""}
                   ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
                   ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
                   ${!inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
@@ -3999,6 +3999,7 @@ SpcFlexCCard.prototype._renderZones = function () {
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCZoneGroupsBaseStyles.call(this)}
     <style>
+      .zone-inhibited { color:var(--spc-flexc-inhibited-color,#f6b73c); }
       .zone-groups-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
       .zone-groups-toggle-all, .zone-group-header { appearance:none; border:0; font:inherit; color:inherit; cursor:pointer; }
       .zone-groups-toggle-all { padding:6px 9px; border-radius:8px; background:var(--secondary-background-color,rgba(127,127,127,.08)); color:var(--primary-color); font-size:12px; font-weight:700; }
@@ -4087,7 +4088,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "zone.heat": "Chaleur détectée",
     "zone.active": "Actif",
     "zone.tamper": "AUTOPROTECTION",
-    "zone.inhibited": "INHIBÉ",
+    "zone.inhibited": "Inhibé",
     "zone.none": "Aucune zone SPC découverte.",
     "zone.name": "Zone {id}",
     "area.none": "Aucun secteur SPC disponible.",
@@ -4122,8 +4123,8 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "group.area_count.other": "{count} secteurs",
     "group.tamper_count.one": "{count} autoprotection",
     "group.tamper_count.other": "{count} autoprotections",
-    "group.active_count.one": "{count} actif",
-    "group.active_count.other": "{count} actifs",
+    "group.active_count.one": "{count} Actif",
+    "group.active_count.other": "{count} Actifs",
     "group.fault_count.one": "{count} défaut",
     "group.fault_count.other": "{count} défauts",
     "group.unavailable_count.one": "{count} indisponible",
@@ -4227,7 +4228,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "zone.heat": "Heat detected",
     "zone.active": "Active",
     "zone.tamper": "TAMPER",
-    "zone.inhibited": "INHIBITED",
+    "zone.inhibited": "Inhibited",
     "zone.none": "No SPC zone discovered.",
     "zone.name": "Zone {id}",
     "area.none": "No SPC area available.",
@@ -4262,8 +4263,8 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "group.area_count.other": "{count} areas",
     "group.tamper_count.one": "{count} tamper",
     "group.tamper_count.other": "{count} tampers",
-    "group.active_count.one": "{count} active",
-    "group.active_count.other": "{count} active",
+    "group.active_count.one": "{count} Active",
+    "group.active_count.other": "{count} Active",
     "group.fault_count.one": "{count} fault",
     "group.fault_count.other": "{count} faults",
     "group.unavailable_count.one": "{count} unavailable",
