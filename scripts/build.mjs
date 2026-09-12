@@ -5,6 +5,7 @@ const sources = await Promise.all([
   readFile("src/ha-spc-flexc-card.js", "utf8"),
   readFile("src/spc-flexc-outputs.js", "utf8"),
   readFile("src/spc-flexc-zone-groups.js", "utf8"),
+  readFile("src/spc-flexc-i18n.js", "utf8"),
   readFile("src/spc-flexc-render-scheduler.js", "utf8"),
 ]);
 
@@ -15,7 +16,7 @@ const core = sources[0].replace(
 
 await writeFile(
   "ha-spc-flexc-card.js",
-  `${core.trimEnd()}\n\n${sources[1].trim()}\n\n${sources[2].trim()}\n\n${sources[3].trimStart()}`,
+  `${core.trimEnd()}\n\n${sources[1].trim()}\n\n${sources[2].trim()}\n\n${sources[3].trim()}\n\n${sources[4].trimStart()}`,
   "utf8"
 );
 
