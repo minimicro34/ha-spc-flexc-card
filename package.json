@@ -1,11 +1,11 @@
 {
   "name": "ha-spc-flexc-card",
-  "version": "1.0.3",
+  "version": "1.0.4'",
   "private": true,
   "description": "Lovelace dashboard card for the SPC FlexC Home Assistant integration.",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node --check src/ha-spc-flexc-card.js && node --check src/spc-flexc-outputs.js && node scripts/check-dist.mjs"
+    "check": "node --check src/ha-spc-flexc-card.js && node --check src/spc-flexc-outputs.js && node --check src/spc-flexc-render-scheduler.js && node scripts/check-dist.mjs"
   },
   "engines": {
     "node": ">=20"

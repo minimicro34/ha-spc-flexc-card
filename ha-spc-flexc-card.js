@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.3";
+const CARD_VERSION = "1.0.4";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -3850,7 +3850,7 @@ console.info(
   "color:#1565c0;background:white;font-weight:700;"
 );
 
-/* SPC FlexC Card v1.0.3 extensions: Mapping Gates, door supervision and zone inhibition. */
+/* SPC FlexC Card v1.0.4 extensions: Mapping Gates, door supervision and zone inhibition. */
 
 const spcFlexCBaseLoadActiveTab = SpcFlexCCard.prototype._loadActiveTab;
 const spcFlexCBaseGetZones = SpcFlexCCard.prototype._getZones;
@@ -4217,4 +4217,48 @@ SpcFlexCCard.prototype._render = function () {
       );
     });
   });
+};
+
+/* SPC FlexC Card v1.0.4 render scheduler. */
+
+const spcFlexCImmediateRender = SpcFlexCCard.prototype._render;
+const spcFlexCBaseDisconnectedCallback =
+  SpcFlexCCard.prototype.disconnectedCallback;
+
+SpcFlexCCard.prototype._render = function () {
+  if (this._spcRenderFrame != null) {
+    return;
+  }
+
+  const render = () => {
+    this._spcRenderFrame = null;
+    this._spcRenderUsesAnimationFrame = false;
+    spcFlexCImmediateRender.call(this);
+  };
+
+  if (typeof window.requestAnimationFrame === "function") {
+    this._spcRenderUsesAnimationFrame = true;
+    this._spcRenderFrame = window.requestAnimationFrame(render);
+  } else {
+    this._spcRenderUsesAnimationFrame = false;
+    this._spcRenderFrame = window.setTimeout(render, 0);
+  }
+};
+
+SpcFlexCCard.prototype.disconnectedCallback = function () {
+  if (this._spcRenderFrame != null) {
+    if (
+      this._spcRenderUsesAnimationFrame &&
+      typeof window.cancelAnimationFrame === "function"
+    ) {
+      window.cancelAnimationFrame(this._spcRenderFrame);
+    } else {
+      window.clearTimeout(this._spcRenderFrame);
+    }
+
+    this._spcRenderFrame = null;
+    this._spcRenderUsesAnimationFrame = false;
+  }
+
+  spcFlexCBaseDisconnectedCallback.call(this);
 };

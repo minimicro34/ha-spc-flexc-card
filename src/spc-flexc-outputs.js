@@ -1,4 +1,4 @@
-/* SPC FlexC Card v1.0.3 extensions: Mapping Gates, door supervision and zone inhibition. */
+/* SPC FlexC Card v1.0.4 extensions: Mapping Gates, door supervision and zone inhibition. */
 
 const spcFlexCBaseLoadActiveTab = SpcFlexCCard.prototype._loadActiveTab;
 const spcFlexCBaseGetZones = SpcFlexCCard.prototype._getZones;
