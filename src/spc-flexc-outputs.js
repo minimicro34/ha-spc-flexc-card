@@ -95,12 +95,7 @@ SpcFlexCCard.prototype._getZones = function () {
 SpcFlexCCard.prototype._renderZoneRow = function (zone) {
   const stateInfo = this._zoneStateInfo(zone);
   const inhibited = zone.inhibited === true;
-  const active = zone.state === "on";
-  const visualClass = inhibited
-    ? active
-      ? "danger"
-      : "warning"
-    : stateInfo.className;
+  const visualClass = stateInfo.className;
 
   return `
     <div class="zone-row${inhibited ? " zone-row-inhibited" : ""}">
