@@ -3781,7 +3781,6 @@ SpcFlexCCard.prototype._render = function () {
 
 const spcFlexCZoneGroupsBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCZoneGroupsBaseRender = SpcFlexCCard.prototype._render;
-const spcFlexCZoneGroupsBaseZoneStateInfo = SpcFlexCCard.prototype._zoneStateInfo;
 
 SpcFlexCCard.prototype._zoneGroupsStorageKey = function () {
   const entity = this._config?.entity;
@@ -3843,18 +3842,7 @@ SpcFlexCCard.prototype._setZoneGroupExpanded = function (areaId, expanded) {
 };
 
 SpcFlexCCard.prototype._zoneIsInhibited = function (zone) {
-  return Number(zone?.status) === 2;
-};
-
-SpcFlexCCard.prototype._zoneStateInfo = function (zone) {
-  if (this._zoneIsInhibited(zone)) {
-    return {
-      label: this._t("zone.inhibited"),
-      className: "warning",
-    };
-  }
-
-  return spcFlexCZoneGroupsBaseZoneStateInfo.call(this, zone);
+  return zone?.inhibited === true;
 };
 
 SpcFlexCCard.prototype._getZoneGroups = function () {
@@ -3936,18 +3924,15 @@ SpcFlexCCard.prototype._renderZones = function () {
           const tampers = group.zones.filter(
             (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
           );
-          const inhibitedLabel = this._t("zone.inhibited");
-          const zoneIsDisplayedAsInhibited = (zone) =>
-            this._zoneStateInfo(zone)?.label === inhibitedLabel;
-          const inhibitedZones = group.zones.filter(
-            zoneIsDisplayedAsInhibited
+          const inhibitedZones = group.zones.filter((zone) =>
+            this._zoneIsInhibited(zone)
           ).length;
           const activeZones = normalZones.filter(
-            (zone) => zone.state === "on" && !zoneIsDisplayedAsInhibited(zone)
+            (zone) => zone.state === "on" && !this._zoneIsInhibited(zone)
           ).length;
           const activeTampers = tampers.filter(
             (zone) =>
-              !zoneIsDisplayedAsInhibited(zone) &&
+              !this._zoneIsInhibited(zone) &&
               (zone.state === "on" || zone.eventTamper === true)
           ).length;
           const unavailable = group.zones.filter(
