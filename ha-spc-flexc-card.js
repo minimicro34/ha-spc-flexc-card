@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.4";
+const CARD_VERSION = "1.0.5";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -31,7 +31,14 @@ class SpcFlexCCard extends HTMLElement {
       ...config,
     };
 
-    const validTabs = ["system", "areas", "zones", "doors", "technical"];
+    const validTabs = [
+      "system",
+      "areas",
+      "zones",
+      "doors",
+      "outputs",
+      "technical",
+    ];
 
     if (entityChanged || !validTabs.includes(this._activeTab)) {
       this._activeTab = this._loadActiveTab(config.entity) || "system";
@@ -64,6 +71,18 @@ class SpcFlexCCard extends HTMLElement {
       this._spcStateUnsubscribe();
       this._spcStateUnsubscribe = null;
     }
+  }
+
+  _t(key, variables = {}, fallback = key) {
+    if (typeof spcFlexCTranslate === "function") {
+      return spcFlexCTranslate(this._hass, key, variables, fallback);
+    }
+    return fallback;
+  }
+
+  _tCount(key, count, variables = {}) {
+    const suffix = Number(count) === 1 ? "one" : "other";
+    return this._t(`${key}.${suffix}`, { count, ...variables }, String(count));
   }
 
   _reconcileLiveZoneStates() {
@@ -171,7 +190,14 @@ class SpcFlexCCard extends HTMLElement {
 
     try {
       const value = window.localStorage.getItem(key);
-      return ["system", "areas", "zones", "doors", "technical"].includes(value)
+      return [
+        "system",
+        "areas",
+        "zones",
+        "doors",
+        "outputs",
+        "technical",
+      ].includes(value)
         ? value
         : null;
     } catch {
@@ -235,24 +261,22 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   _stateLabel(state) {
-    return (
-      {
-        disarmed: "Désarmée",
-        armed_away: "Armée",
-        armed_home: "Partiel A",
-        armed_night: "Partiel B",
-        armed_vacation: "Armée",
-        armed_custom_bypass: "Armée",
-        arming: "Armement…",
-        disarming: "Désarmement…",
-        triggered: "ALARME",
-        pending: "Temporisation",
-        unavailable: "Indisponible",
-        unknown: "État inconnu",
-      }[state] ||
-      state ||
-      "Inconnu"
-    );
+    const key = {
+      disarmed: "state.disarmed",
+      armed_away: "state.armed",
+      armed_home: "state.part_a",
+      armed_night: "state.part_b",
+      armed_vacation: "state.armed",
+      armed_custom_bypass: "state.armed",
+      arming: "state.arming",
+      disarming: "state.disarming",
+      triggered: "state.alarm",
+      pending: "state.pending",
+      unavailable: "state.unavailable",
+      unknown: "state.unknown",
+    }[state];
+
+    return key ? this._t(key) : state || this._t("state.unknown_short");
   }
 
   _stateClass(state) {
@@ -306,24 +330,23 @@ class SpcFlexCCard extends HTMLElement {
 
   _modeLabel(mode) {
     const normalized = String(mode ?? "").toLowerCase();
+    const key = {
+      unset: "state.disarmed_masc",
+      disarmed: "state.disarmed_masc",
+      full_set: "state.armed_masc",
+      fullset: "state.armed_masc",
+      set: "state.armed_masc",
+      armed: "state.armed_masc",
+      part_set_a: "state.part_a",
+      partset_a: "state.part_a",
+      part_set_b: "state.part_b",
+      partset_b: "state.part_b",
+      part_set: "state.partial",
+      partset: "state.partial",
+      unknown: "state.unknown_short",
+    }[normalized];
 
-    const labels = {
-      unset: "Désarmé",
-      disarmed: "Désarmé",
-      full_set: "Armé",
-      fullset: "Armé",
-      set: "Armé",
-      armed: "Armé",
-      part_set_a: "Partiel A",
-      partset_a: "Partiel A",
-      part_set_b: "Partiel B",
-      partset_b: "Partiel B",
-      part_set: "Partiel",
-      partset: "Partiel",
-      unknown: "Inconnu",
-    };
-
-    return labels[normalized] || String(mode ?? "Inconnu");
+    return key ? this._t(key) : String(mode ?? this._t("state.unknown_short"));
   }
 
   _modeClass(mode) {
@@ -360,7 +383,7 @@ class SpcFlexCCard extends HTMLElement {
       .map(([id, area]) => ({
         id: String(id),
         numericId: Number(id),
-        name: area?.name || `Secteur ${id}`,
+        name: area?.name || this._t("area.name", { id }),
         mode: area?.mode,
         modeName: area?.mode_name,
         raw: area,
@@ -448,7 +471,7 @@ class SpcFlexCCard extends HTMLElement {
           name:
             attrs.friendly_name ||
             entityId.split(".").pop() ||
-            `Zone ${attrs.zone_id}`,
+            this._t("zone.name", { id: attrs.zone_id }),
           logicInput: attrs.logic_input,
           status: attrs.status,
           procState: attrs.proc_state,
@@ -509,7 +532,7 @@ class SpcFlexCCard extends HTMLElement {
       (candidate) => String(candidate.id) === id
     );
 
-    return area?.name || `Secteur ${id}`;
+    return area?.name || this._t("area.name", { id });
   }
 
   _zoneIcon(zone) {
@@ -568,34 +591,32 @@ class SpcFlexCCard extends HTMLElement {
 
   _zoneStateInfo(zone) {
     const active = zone.state === "on";
+    const isTamper =
+      zone.zoneType === "tamper" ||
+      zone.deviceClass === "tamper";
     const tamperActive =
       zone.eventTamper === true ||
-      (
-        (zone.zoneType === "tamper" ||
-          zone.deviceClass === "tamper") &&
-        active
-      );
+      (isTamper && active);
 
-    if (
-      zone.zoneType === "tamper" ||
-      zone.deviceClass === "tamper"
-    ) {
+    if (isTamper) {
       return {
-        label: tamperActive ? "AUTOPROTECTION" : "Normal",
+        label: tamperActive
+          ? this._t("zone.tamper")
+          : this._t("state.normal"),
         className: tamperActive ? "danger" : "ok",
       };
     }
 
     if (zone.state === "unavailable") {
       return {
-        label: "Indisponible",
+        label: this._t("state.unavailable"),
         className: "muted",
       };
     }
 
     if (zone.state === "unknown") {
       return {
-        label: "Inconnu",
+        label: this._t("state.unknown_short"),
         className: "muted",
       };
     }
@@ -604,7 +625,9 @@ class SpcFlexCCard extends HTMLElement {
       case "motion":
       case "occupancy":
         return {
-          label: active ? "Mouvement" : "Repos",
+          label: active
+            ? this._t("zone.motion")
+            : this._t("zone.rest"),
           className: active ? "warning" : "ok",
         };
 
@@ -612,25 +635,33 @@ class SpcFlexCCard extends HTMLElement {
       case "window":
       case "opening":
         return {
-          label: active ? "Ouvert" : "Fermé",
+          label: active
+            ? this._t("zone.open")
+            : this._t("zone.closed"),
           className: active ? "warning" : "ok",
         };
 
       case "smoke":
         return {
-          label: active ? "Fumée détectée" : "Normal",
+          label: active
+            ? this._t("zone.smoke")
+            : this._t("state.normal"),
           className: active ? "danger" : "ok",
         };
 
       case "heat":
         return {
-          label: active ? "Chaleur détectée" : "Normal",
+          label: active
+            ? this._t("zone.heat")
+            : this._t("state.normal"),
           className: active ? "danger" : "ok",
         };
 
       default:
         return {
-          label: active ? "Actif" : "Repos",
+          label: active
+            ? this._t("zone.active")
+            : this._t("zone.rest"),
           className: active ? "warning" : "ok",
         };
     }
@@ -650,20 +681,19 @@ class SpcFlexCCard extends HTMLElement {
     ]);
 
     let prefix;
-    let label;
+    let labelKey;
 
     if (stateObj.state === "disarmed") {
       prefix = "last_unset";
-      label = "Dernier désarmement";
+      labelKey = "area.last_unset";
     } else if (stableArmedStates.has(stateObj.state)) {
       prefix = "last_set";
-      label = "Dernier armement";
+      labelKey = "area.last_set";
     } else {
       return "";
     }
 
     const attrs = stateObj.attributes || {};
-
     const formattedTime = this._formatDateTime(
       attrs[`${prefix}_time`]
     );
@@ -672,37 +702,24 @@ class SpcFlexCCard extends HTMLElement {
       return "";
     }
 
-    const rawUserName =
-      attrs[`${prefix}_user_name`];
-
-    const rawUserId =
-      attrs[`${prefix}_user_id`];
-
-    const userName =
-      rawUserName != null
-        ? String(rawUserName).trim()
-        : "";
-
-    const userId =
-      rawUserId != null
-        ? String(rawUserId).trim()
-        : "";
-
+    const userName = String(
+      attrs[`${prefix}_user_name`] ?? ""
+    ).trim();
+    const userId = String(
+      attrs[`${prefix}_user_id`] ?? ""
+    ).trim();
     const user = userName || userId || null;
 
     return `
       <div class="last-change">
         <div class="last-change-label">
-          ${this._escapeHtml(label)}
+          ${this._escapeHtml(this._t(labelKey))}
         </div>
-
         <div class="last-change-value">
           ${this._escapeHtml(formattedTime)}
           ${
             user
-              ? `<span class="last-change-user"> · ${this._escapeHtml(
-                  user
-                )}</span>`
+              ? `<span class="last-change-user"> · ${this._escapeHtml(user)}</span>`
               : ""
           }
         </div>
@@ -981,8 +998,8 @@ class SpcFlexCCard extends HTMLElement {
         <div class="diagnostic-row">
           <ha-icon class="muted" icon="mdi:lan-disconnect"></ha-icon>
           <div class="diagnostic-main">
-            <div class="diagnostic-name">Connexion FlexC</div>
-            <div class="diagnostic-detail muted">État non déterminé</div>
+            <div class="diagnostic-name">${this._t("system.connection")}</div>
+            <div class="diagnostic-detail muted">${this._t("system.state_unknown")}</div>
           </div>
         </div>
       `;
@@ -991,8 +1008,8 @@ class SpcFlexCCard extends HTMLElement {
         <div class="diagnostic-row">
           <ha-icon class="muted" icon="mdi:lan"></ha-icon>
           <div class="diagnostic-main">
-            <div class="diagnostic-name">Connexion FlexC</div>
-            <div class="diagnostic-detail muted">Entité non exposée</div>
+            <div class="diagnostic-name">${this._t("system.connection")}</div>
+            <div class="diagnostic-detail muted">${this._t("system.entity_missing")}</div>
           </div>
         </div>
       `;
@@ -1007,9 +1024,9 @@ class SpcFlexCCard extends HTMLElement {
             icon="${connected ? "mdi:lan-connect" : "mdi:lan-disconnect"}"
           ></ha-icon>
           <div class="diagnostic-main">
-            <div class="diagnostic-name">Connexion FlexC</div>
+            <div class="diagnostic-name">${this._t("system.connection")}</div>
             <div class="diagnostic-detail ${connected ? "ok" : "danger"}">
-              ${connected ? "Connectée" : "Déconnectée"}
+              ${this._t(connected ? "state.connected" : "state.disconnected")}
             </div>
           </div>
         </div>
@@ -1022,9 +1039,9 @@ class SpcFlexCCard extends HTMLElement {
           <div class="diagnostic-row engineer-warning">
             <ha-icon class="warning" icon="mdi:account-hard-hat"></ha-icon>
             <div class="diagnostic-main">
-              <div class="diagnostic-name warning">Mode ingénieur actif</div>
+              <div class="diagnostic-name warning">${this._t("system.engineer_active")}</div>
               <div class="diagnostic-detail muted">
-                L’état est remonté en temps réel par la centrale.
+                ${this._t("system.engineer_detail")}
               </div>
             </div>
           </div>
@@ -1036,14 +1053,14 @@ class SpcFlexCCard extends HTMLElement {
         ? `
           <div class="fault-ok muted">
             <ha-icon icon="mdi:information-outline"></ha-icon>
-            <span>Défauts système non déterminés : métadonnées indisponibles.</span>
+            <span>${this._t("system.faults_unknown")}</span>
           </div>
         `
         : diagnostics.faults.length
           ? `
             <div class="fault-header danger">
               <ha-icon icon="mdi:alert-circle"></ha-icon>
-              <span>Défauts actifs</span>
+              <span>${this._t("system.active_faults")}</span>
               <span class="fault-count">${diagnostics.faults.length}</span>
             </div>
             <div class="fault-list">
@@ -1062,13 +1079,13 @@ class SpcFlexCCard extends HTMLElement {
           : `
             <div class="fault-ok ok">
               <ha-icon icon="mdi:check-circle"></ha-icon>
-              <span>Aucun défaut actif</span>
+              <span>${this._t("system.no_fault")}</span>
             </div>
           `;
 
     return `
       <div class="diagnostics-block">
-        <div class="group-title">État et défauts</div>
+        <div class="group-title">${this._t("system.health")}</div>
         ${connectionHtml}
         ${engineerHtml}
         ${faultsHtml}
@@ -1255,8 +1272,6 @@ class SpcFlexCCard extends HTMLElement {
         const activePath = normalizePath(ats.activePath);
 
         rawAtps.forEach((atp, index) => {
-          // The FlexC ATP id is an internal identifier. Number ATPs locally
-          // inside each ATS for the user-facing card and never expose raw ids.
           atp.displayId = index + 1;
 
           if (!activePath) return;
@@ -1283,9 +1298,6 @@ class SpcFlexCCard extends HTMLElement {
           }
         });
 
-        // Some SPC configurations expose one internally numbered ATP without
-        // a friendly ATP name. If it is the sole path of an ATS, active_path is
-        // authoritative and is also the best available display name.
         if (activePath && rawAtps.length === 1) {
           rawAtps[0].active = true;
           if (!rawAtps[0].name && ats.activePath) {
@@ -1303,19 +1315,19 @@ class SpcFlexCCard extends HTMLElement {
 
   _atpStateLabel(atp) {
     if (atp.fault === true || String(atp.fault).toLowerCase() === "true") {
-      return { label: "Défaut", className: "danger" };
+      return { label: this._t("state.fault"), className: "danger" };
     }
 
     if (atp.active === true || String(atp.active).toLowerCase() === "true") {
-      return { label: "OK", className: "ok" };
+      return { label: this._t("state.ok"), className: "ok" };
     }
 
     if (atp.active === false || String(atp.active).toLowerCase() === "false") {
-      return { label: "Inactif", className: "muted" };
+      return { label: this._t("state.inactive"), className: "muted" };
     }
 
     if (atp.fault === false || String(atp.fault).toLowerCase() === "false") {
-      return { label: "OK", className: "ok" };
+      return { label: this._t("state.ok"), className: "ok" };
     }
 
     return null;
@@ -1327,7 +1339,7 @@ class SpcFlexCCard extends HTMLElement {
 
     return `
       <div class="technical-section">
-        <div class="technical-section-title">Communication FlexC</div>
+        <div class="technical-section-title">${this._t("system.communication")}</div>
         <div class="ats-list">
           ${atsList
             .map((ats) => {
@@ -1357,16 +1369,19 @@ class SpcFlexCCard extends HTMLElement {
                                 <div class="atp-title">${this._escapeHtml(atpLabel)}</div>
                                 ${stateInfo
                                   ? this._technicalLine(
-                                      "État",
+                                      this._t("system.state"),
                                       stateInfo.label,
                                       stateInfo.className
                                     )
                                   : ""}
                                 ${ats.ungrouped
                                   ? ""
-                                  : this._technicalLine("ATS utilisé", atsLabel)}
+                                  : this._technicalLine(
+                                      this._t("system.ats_used"),
+                                      atsLabel
+                                    )}
                                 ${this._technicalLine(
-                                  "Dernière transmission réussie",
+                                  this._t("system.last_tx"),
                                   formattedTx
                                 )}
                               </div>
@@ -1426,7 +1441,7 @@ class SpcFlexCCard extends HTMLElement {
 
     return `
       <div class="technical-section">
-        <div class="technical-section-title">X-BUS</div>
+        <div class="technical-section-title">${this._t("system.xbus")}</div>
         <div class="xbus-list">
           ${devices
             .map((device) => {
@@ -1439,22 +1454,22 @@ class SpcFlexCCard extends HTMLElement {
                   <div class="xbus-title">
                     <span>${this._escapeHtml(title)}</span>
                     <span class="${fault ? "danger" : "ok"}">
-                      ${fault ? "Défaut" : "OK"}
+                      ${this._t(fault ? "state.fault" : "state.ok")}
                     </span>
                   </div>
-                  ${this._technicalLine("ID X-BUS", device.id)}
-                  ${this._technicalLine("Adresse SIA", device.siaAddress)}
+                  ${this._technicalLine(this._t("system.xbus_id"), device.id)}
+                  ${this._technicalLine(this._t("system.sia_address"), device.siaAddress)}
                   ${device.tamperFault !== null
                     ? this._technicalLine(
-                        "Autoprotection",
-                        fault ? "Défaut" : "OK",
+                        this._t("system.tamper"),
+                        this._t(fault ? "state.fault" : "state.ok"),
                         fault ? "danger" : "ok"
                       )
                     : ""}
                   ${device.tamperIsolated !== null
                     ? this._technicalLine(
-                        "Isolement autoprotection",
-                        isolated ? "Isolé" : "Non isolé",
+                        this._t("system.tamper_isolation"),
+                        this._t(isolated ? "state.isolated" : "state.not_isolated"),
                         isolated ? "warning" : "ok"
                       )
                     : ""}
@@ -1472,11 +1487,11 @@ class SpcFlexCCard extends HTMLElement {
     const device = scope?.device || {};
 
     const identityLines = [
-      this._technicalLine("Fabricant", device.manufacturer),
-      this._technicalLine("Modèle", device.model || device.model_id),
-      this._technicalLine("Firmware", device.sw_version),
-      this._technicalLine("Matériel", device.hw_version),
-      this._technicalLine("N° de série", device.serial_number),
+      this._technicalLine(this._t("system.manufacturer"), device.manufacturer),
+      this._technicalLine(this._t("system.model"), device.model || device.model_id),
+      this._technicalLine(this._t("system.firmware"), device.sw_version),
+      this._technicalLine(this._t("system.hardware"), device.hw_version),
+      this._technicalLine(this._t("system.serial"), device.serial_number),
     ].join("");
 
     const acFrequency = this._findIntegrationState([
@@ -1497,10 +1512,10 @@ class SpcFlexCCard extends HTMLElement {
     ]);
 
     const powerLines = [
-      this._entityTechnicalLine("Fréquence secteur", acFrequency),
-      this._entityTechnicalLine("Tension batterie", batteryVoltage),
-      this._entityTechnicalLine("Tension auxiliaire", auxVoltage),
-      this._entityTechnicalLine("Courant auxiliaire", auxCurrent),
+      this._entityTechnicalLine(this._t("system.ac_frequency"), acFrequency),
+      this._entityTechnicalLine(this._t("system.battery_voltage"), batteryVoltage),
+      this._entityTechnicalLine(this._t("system.aux_voltage"), auxVoltage),
+      this._entityTechnicalLine(this._t("system.aux_current"), auxCurrent),
     ].join("");
 
     const rfEntities = this._scopedStates(true).filter(({ entityId, stateObj }) =>
@@ -1519,7 +1534,7 @@ class SpcFlexCCard extends HTMLElement {
         .filter(({ stateObj }) => this._valueWithUnit(stateObj) !== null)
         .map(({ stateObj }) =>
           this._technicalLine(
-            stateObj.attributes?.friendly_name || "État",
+            stateObj.attributes?.friendly_name || this._t("system.state"),
             this._valueWithUnit(stateObj)
           )
         )
@@ -1534,15 +1549,15 @@ class SpcFlexCCard extends HTMLElement {
     };
 
     const identitySection = identityLines
-      ? `<div class="technical-section">
-          <div class="technical-section-title">Centrale</div>
+      ? `<div class="technical-section" data-technical-section="panel">
+          <div class="technical-section-title">${this._t("system.panel")}</div>
           ${identityLines}
         </div>`
       : "";
 
     const powerSection = powerLines
       ? `<div class="technical-section">
-          <div class="technical-section-title">Alimentation</div>
+          <div class="technical-section-title">${this._t("system.power")}</div>
           ${powerLines}
         </div>`
       : "";
@@ -1552,8 +1567,8 @@ class SpcFlexCCard extends HTMLElement {
       powerSection,
       this._renderFlexcCommunication(),
       this._renderXBusDevices(),
-      renderEntityList("RF", rfEntities),
-      renderEntityList("Modem", modemEntities),
+      renderEntityList(this._t("system.rf"), rfEntities),
+      renderEntityList(this._t("system.modem"), modemEntities),
     ].join("");
 
     if (!content) {
@@ -1577,35 +1592,36 @@ class SpcFlexCCard extends HTMLElement {
       return;
     }
 
-    const stateObj =
-      this._hass.states[entityId];
-
+    const stateObj = this._hass.states[entityId];
     const name =
       displayName ||
       stateObj?.attributes?.friendly_name ||
       this._config?.name ||
       entityId;
 
-    let prompt =
-      `Exécuter l'action sur ${name} ?`;
+    let prompt = this._t("confirm.generic", { name });
 
     switch (service) {
       case "alarm_disarm":
-        prompt = `Désarmer ${name} ?`;
+        prompt = this._t("confirm.disarm", { name });
         break;
 
       case "alarm_arm_away":
-        prompt = `Armer complètement ${name} ?`;
+        prompt = this._t("confirm.full_arm", { name });
         break;
 
       case "alarm_arm_home":
-        prompt =
-          `Activer ${actionLabel || "le partiel A"} sur ${name} ?`;
+        prompt = this._t("confirm.part_set", {
+          action: actionLabel || this._t("state.part_a"),
+          name,
+        });
         break;
 
       case "alarm_arm_night":
-        prompt =
-          `Activer ${actionLabel || "le partiel B"} sur ${name} ?`;
+        prompt = this._t("confirm.part_set", {
+          action: actionLabel || this._t("state.part_b"),
+          name,
+        });
         break;
 
       default:
@@ -1627,7 +1643,6 @@ class SpcFlexCCard extends HTMLElement {
       }
     );
   }
-
 
   _getDoors() {
     const doors = new Map();
@@ -1661,131 +1676,71 @@ class SpcFlexCCard extends HTMLElement {
         registryEntry,
       } = item;
 
-      const attrs =
-        stateObj?.attributes || {};
-
-      const uniqueId =
-        String(registryEntry?.unique_id || "");
-
-      let doorId =
-        attrs.door_id;
-
-      let match =
-        uniqueId.match(
-          /_door_(\d+)_(status|mode)$/
-        );
+      const attrs = stateObj?.attributes || {};
+      const uniqueId = String(registryEntry?.unique_id || "");
+      let doorId = attrs.door_id;
+      let match = uniqueId.match(/_door_(\d+)_(status|mode)$/);
 
       if (match) {
         doorId = match[1];
       }
 
-      if (
-        doorId !== undefined &&
-        doorId !== null
-      ) {
-        const door =
-          ensureDoor(doorId);
+      if (doorId !== undefined && doorId !== null) {
+        const door = ensureDoor(doorId);
 
-        door.zoneId =
-          attrs.zone_id ?? door.zoneId;
+        door.zoneId = attrs.zone_id ?? door.zoneId;
+        door.zoneName = attrs.zone_name || door.zoneName;
+        door.areaId = attrs.area_id ?? door.areaId;
+        door.areaName = attrs.area_name || door.areaName;
+        door.areaSide1 = attrs.area_side_1 ?? door.areaSide1;
+        door.areaSide1Name = attrs.area_side_1_name || door.areaSide1Name;
+        door.name = attrs.zone_name || door.name;
 
-        door.zoneName =
-          attrs.zone_name || door.zoneName;
+        const rawStatus = attrs.raw_status;
+        const rawMode = attrs.raw_mode;
 
-        door.areaId =
-          attrs.area_id ?? door.areaId;
-
-        door.areaName =
-          attrs.area_name || door.areaName;
-
-        door.areaSide1 =
-          attrs.area_side_1 ?? door.areaSide1;
-
-        door.areaSide1Name =
-          attrs.area_side_1_name ||
-          door.areaSide1Name;
-
-        door.name =
-          attrs.zone_name || door.name;
-
-        const rawStatus =
-          attrs.raw_status;
-
-        const rawMode =
-          attrs.raw_mode;
-
-        if (
-          match?.[2] === "status" ||
-          rawStatus !== undefined
-        ) {
-          door.status =
-            rawStatus ?? stateObj.state;
+        if (match?.[2] === "status" || rawStatus !== undefined) {
+          door.status = rawStatus ?? stateObj.state;
         }
 
-        if (
-          match?.[2] === "mode" ||
-          rawMode !== undefined
-        ) {
-          door.mode =
-            rawMode ?? stateObj.state;
+        if (match?.[2] === "mode" || rawMode !== undefined) {
+          door.mode = rawMode ?? stateObj.state;
         }
 
         if (!door.name) {
-          const friendly =
-            String(
-              attrs.friendly_name || ""
-            ).trim();
-
+          const friendly = String(attrs.friendly_name || "").trim();
           door.name =
             friendly
-              .replace(
-                /\s+(Status|Mode|Statut)$/i,
-                ""
-              )
+              .replace(/\s+(Status|Mode|Statut)$/i, "")
               .trim() || null;
         }
       }
 
-      match =
-        uniqueId.match(
-          /_door_(\d+)_(open_momentarily|open_permanently|set_normal|lock)$/
-        );
+      match = uniqueId.match(
+        /_door_(\d+)_(open_momentarily|open_permanently|set_normal|lock)$/
+      );
 
-      if (
-        match &&
-        entityId.startsWith("button.")
-      ) {
-        const door =
-          ensureDoor(match[1]);
-
-        door.buttons[match[2]] =
-          entityId;
+      if (match && entityId.startsWith("button.")) {
+        const door = ensureDoor(match[1]);
+        door.buttons[match[2]] = entityId;
       }
     }
 
-    return Array.from(
-      doors.values()
-    )
+    return Array.from(doors.values())
       .filter(
         (door) =>
           door.status !== null ||
           door.mode !== null ||
-          Object.keys(
-            door.buttons
-          ).length
+          Object.keys(door.buttons).length
       )
       .map((door) => ({
         ...door,
         name:
           door.name ||
           door.zoneName ||
-          `Porte ${door.id}`,
+          this._t("door.name", { id: door.id }),
       }))
-      .sort(
-        (a, b) =>
-          Number(a.id) -
-          Number(b.id)
-      );
+      .sort((a, b) => Number(a.id) - Number(b.id));
   }
 
   _doorAreasLabel(door) {
@@ -1794,9 +1749,7 @@ class SpcFlexCCard extends HTMLElement {
       (
         door.areaId !== null &&
         door.areaId !== undefined
-          ? this._areaName(
-              door.areaId
-            )
+          ? this._areaName(door.areaId)
           : null
       );
 
@@ -1805,25 +1758,15 @@ class SpcFlexCCard extends HTMLElement {
       (
         door.areaSide1 !== null &&
         door.areaSide1 !== undefined
-          ? this._areaName(
-              door.areaSide1
-            )
+          ? this._areaName(door.areaSide1)
           : null
       );
 
-    if (
-      first &&
-      second &&
-      first !== second
-    ) {
+    if (first && second && first !== second) {
       return `${first} ↔ ${second}`;
     }
 
-    return (
-      first ||
-      second ||
-      "Association secteur inconnue"
-    );
+    return first || second || this._t("door.unknown_area");
   }
 
   _renderDoorButton(
@@ -1833,13 +1776,9 @@ class SpcFlexCCard extends HTMLElement {
     icon,
     primary = false
   ) {
-    const entityId =
-      door.buttons[action];
+    const entityId = door.buttons[action];
 
-    if (
-      !entityId ||
-      this._config.show_controls === false
-    ) {
+    if (!entityId || this._config.show_controls === false) {
       return "";
     }
 
@@ -1851,31 +1790,20 @@ class SpcFlexCCard extends HTMLElement {
         data-door-name="${this._escapeHtml(door.name)}"
         data-door-action="${this._escapeHtml(label)}"
       >
-        <ha-icon
-          icon="${this._escapeHtml(icon)}"
-        ></ha-icon>
-
-        <span>
-          ${this._escapeHtml(label)}
-        </span>
+        <ha-icon icon="${this._escapeHtml(icon)}"></ha-icon>
+        <span>${this._escapeHtml(label)}</span>
       </button>
     `;
   }
 
   _renderDoors() {
-    const doors =
-      this._getDoors();
+    const doors = this._getDoors();
 
     if (!doors.length) {
       return `
         <div class="empty-state">
-          <ha-icon
-            icon="mdi:door-closed-lock"
-          ></ha-icon>
-
-          <div>
-            Aucune porte SPC découverte.
-          </div>
+          <ha-icon icon="mdi:door-closed-lock"></ha-icon>
+          <div>${this._t("door.none")}</div>
         </div>
       `;
     }
@@ -1888,50 +1816,20 @@ class SpcFlexCCard extends HTMLElement {
               <div class="door-card">
                 <div class="door-header">
                   <div>
-                    <div class="door-title">
-                      ${this._escapeHtml(
-                        door.name
-                      )}
-                    </div>
-
-                    <div class="door-areas">
-                      ${this._escapeHtml(
-                        this._doorAreasLabel(
-                          door
-                        )
-                      )}
-                    </div>
+                    <div class="door-title">${this._escapeHtml(door.name)}</div>
+                    <div class="door-areas">${this._escapeHtml(this._doorAreasLabel(door))}</div>
                   </div>
-
-                  <ha-icon
-                    class="door-icon"
-                    icon="mdi:door"
-                  ></ha-icon>
+                  <ha-icon class="door-icon" icon="mdi:door"></ha-icon>
                 </div>
 
                 <div class="door-state-grid">
                   <div class="door-state-card">
-                    <div class="door-state-label">
-                      Status
-                    </div>
-
-                    <div class="door-state-value">
-                      ${this._escapeHtml(
-                        door.status ?? "—"
-                      )}
-                    </div>
+                    <div class="door-state-label">${this._t("door.status")}</div>
+                    <div class="door-state-value">${this._escapeHtml(door.status ?? "—")}</div>
                   </div>
-
                   <div class="door-state-card">
-                    <div class="door-state-label">
-                      Mode
-                    </div>
-
-                    <div class="door-state-value">
-                      ${this._escapeHtml(
-                        door.mode ?? "—"
-                      )}
-                    </div>
+                    <div class="door-state-label">${this._t("door.mode")}</div>
+                    <div class="door-state-value">${this._escapeHtml(door.mode ?? "—")}</div>
                   </div>
                 </div>
 
@@ -1939,20 +1837,11 @@ class SpcFlexCCard extends HTMLElement {
                   door.zoneName
                     ? `
                       <div class="door-zone">
-                        <ha-icon
-                          icon="mdi:shield-home-outline"
-                        ></ha-icon>
-
+                        <ha-icon icon="mdi:shield-home-outline"></ha-icon>
                         <span>
-                          Zone ${this._escapeHtml(
-                            door.zoneId ?? ""
-                          )}${
-                            door.zoneId != null
-                              ? " · "
-                              : ""
-                          }${this._escapeHtml(
-                            door.zoneName
-                          )}
+                          ${this._t("zone.name", { id: door.zoneId ?? "" })}${
+                            door.zoneId != null ? " · " : ""
+                          }${this._escapeHtml(door.zoneName)}
                         </span>
                       </div>
                     `
@@ -1963,37 +1852,32 @@ class SpcFlexCCard extends HTMLElement {
                   ${this._renderDoorButton(
                     door,
                     "open_momentarily",
-                    "Ouverture momentanée",
+                    this._t("action.door_momentary"),
                     "mdi:door-open",
                     true
                   )}
-
                   ${this._renderDoorButton(
                     door,
                     "open_permanently",
-                    "Ouverture permanente",
+                    this._t("action.door_permanent"),
                     "mdi:lock-open-variant"
                   )}
-
                   ${this._renderDoorButton(
                     door,
                     "set_normal",
-                    "Retour au mode normal",
+                    this._t("action.door_normal"),
                     "mdi:door-closed"
                   )}
-
                   ${this._renderDoorButton(
                     door,
                     "lock",
-                    "Verrouiller",
+                    this._t("action.door_lock"),
                     "mdi:lock"
                   )}
                 </div>
 
                 <div class="door-raw-note">
-                  Status et Mode sont affichés tels que fournis
-                  par SPC tant que leur signification n’est pas
-                  validée sur matériel réel.
+                  ${this._t("door.raw_note")}
                 </div>
               </div>
             `
@@ -2003,22 +1887,18 @@ class SpcFlexCCard extends HTMLElement {
     `;
   }
 
-  async _callDoorButton(
-    entityId,
-    doorName,
-    actionLabel
-  ) {
-    if (
-      !this._hass ||
-      !entityId
-    ) {
+  async _callDoorButton(entityId, doorName, actionLabel) {
+    if (!this._hass || !entityId) {
       return;
     }
 
     if (
       this._config.confirm_actions &&
       !window.confirm(
-        `${actionLabel} — ${doorName} ?`
+        this._t("confirm.door", {
+          action: actionLabel,
+          name: doorName,
+        })
       )
     ) {
       return;
@@ -2034,74 +1914,30 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   _renderTabs() {
-    const hasDoors =
-      this._getDoors().length > 0;
+    const hasDoors = this._getDoors().length > 0;
 
-    if (
-      !hasDoors &&
-      this._activeTab === "doors"
-    ) {
+    if (!hasDoors && this._activeTab === "doors") {
       this._activeTab = "system";
     }
 
     const tabs = [
-      {
-        id: "system",
-        label: "Général",
-      },
-      {
-        id: "areas",
-        label: "Secteurs",
-      },
-      {
-        id: "zones",
-        label: "Détecteurs",
-      },
-      ...(hasDoors
-        ? [
-            {
-              id: "doors",
-              label: "Portes",
-            },
-          ]
-        : []),
-      {
-        id: "technical",
-        label: "Système",
-      },
+      ["system", this._t("tab.general")],
+      ["areas", this._t("tab.areas")],
+      ["zones", this._t("tab.detectors")],
+      ...(hasDoors ? [["doors", this._t("tab.doors")]] : []),
+      ["technical", this._t("tab.system")],
     ];
 
-    return `
-      <div class="tabs">
-        ${tabs
-          .map(
-            (tab) => `
-              <button
-                type="button"
-                class="tab ${
-                  this._activeTab === tab.id
-                    ? "active"
-                    : ""
-                }"
-                data-tab="${this._escapeHtml(
-                  tab.id
-                )}"
-              >
-                ${this._escapeHtml(
-                  tab.label
-                )}
-              </button>
-            `
-          )
-          .join("")}
-      </div>
-    `;
+    return `<div class="tabs">${tabs.map(([id, label]) => `
+      <button type="button" class="tab ${this._activeTab === id ? "active" : ""}" data-tab="${id}">
+        ${this._escapeHtml(label)}
+      </button>
+    `).join("")}</div>`;
   }
 
   _renderSystem() {
     const alarm = this._getAlarmEntity();
     const state = alarm?.state || "unknown";
-
     const areas = this._getAreas();
     const zones = this._getNormalZones();
     const tampers = this._getTamperZones();
@@ -2124,104 +1960,67 @@ class SpcFlexCCard extends HTMLElement {
               type="button"
               class="control-button"
               data-service="alarm_disarm"
-              data-entity="${this._escapeHtml(
-                this._config.entity
-              )}"
+              data-entity="${this._escapeHtml(this._config.entity)}"
             >
-              <ha-icon
-                icon="mdi:lock-open-variant"
-              ></ha-icon>
-              <span>Désarmer</span>
+              <ha-icon icon="mdi:lock-open-variant"></ha-icon>
+              <span>${this._t("action.disarm")}</span>
             </button>
 
             <button
               type="button"
               class="control-button primary"
               data-service="alarm_arm_away"
-              data-entity="${this._escapeHtml(
-                this._config.entity
-              )}"
+              data-entity="${this._escapeHtml(this._config.entity)}"
             >
               <ha-icon icon="mdi:lock"></ha-icon>
-              <span>Armement total</span>
+              <span>${this._t("action.full_arm")}</span>
             </button>
           </div>
         `
         : "";
 
+    const areaSummary = areas.length
+      ? this._tCount("group.area_count", areas.length)
+      : this._t("group.no_area");
+    const detectorSummary = zones.length
+      ? this._tCount("group.detector_count", zones.length)
+      : this._t("group.no_detector");
+
     return `
       <div class="system-view">
         <div class="system-panel">
-          <div class="system-state ${this._stateClass(
-            state
-          )}">
-            ${this._escapeHtml(
-              this._stateLabel(state)
-            )}
+          <div class="system-state ${this._stateClass(state)}">
+            ${this._escapeHtml(this._stateLabel(state))}
           </div>
 
           <ha-icon
-            class="system-icon ${this._stateClass(
-              state
-            )}"
-            icon="${this._escapeHtml(
-              this._stateIcon(state)
-            )}"
+            class="system-icon ${this._stateClass(state)}"
+            icon="${this._escapeHtml(this._stateIcon(state))}"
           ></ha-icon>
 
           <div class="system-summary">
-            ${
-              areas.length
-                ? `${areas.length} secteur${
-                    areas.length > 1 ? "s" : ""
-                  }`
-                : "Aucun secteur"
-            }
-            ·
-            ${
-              zones.length
-                ? `${zones.length} détecteur${
-                    zones.length > 1 ? "s" : ""
-                  }`
-                : "Aucun détecteur"
-            }
+            ${areaSummary} · ${detectorSummary}
           </div>
         </div>
 
         <div class="summary-grid">
           <div class="summary-card">
-            <ha-icon
-              icon="mdi:shield-home-outline"
-            ></ha-icon>
-
+            <ha-icon icon="mdi:shield-home-outline"></ha-icon>
             <div>
-              <div class="summary-value">
-                ${areas.length}
-              </div>
-
-              <div class="summary-label">
-                Secteurs
-              </div>
+              <div class="summary-value">${areas.length}</div>
+              <div class="summary-label">${this._t("tab.areas")}</div>
             </div>
           </div>
 
           <div class="summary-card">
-            <ha-icon
-              icon="mdi:motion-sensor"
-            ></ha-icon>
-
+            <ha-icon icon="mdi:motion-sensor"></ha-icon>
             <div>
-              <div class="summary-value">
-                ${zones.length}
-              </div>
-
+              <div class="summary-value">${zones.length}</div>
               <div class="summary-label">
-                Détecteurs
+                ${this._t("tab.detectors")}
                 ${
                   activeZones
-                    ? `<span class="warning"> · ${activeZones} actif${
-                        activeZones > 1 ? "s" : ""
-                      }</span>`
+                    ? `<span class="warning"> · ${this._tCount("group.active_count", activeZones)}</span>`
                     : ""
                 }
               </div>
@@ -2229,20 +2028,14 @@ class SpcFlexCCard extends HTMLElement {
           </div>
 
           <div class="summary-card">
-            <ha-icon
-              icon="mdi:shield-alert-outline"
-            ></ha-icon>
-
+            <ha-icon icon="mdi:shield-alert-outline"></ha-icon>
             <div>
-              <div class="summary-value">
-                ${tampers.length}
-              </div>
-
+              <div class="summary-value">${tampers.length}</div>
               <div class="summary-label">
-                Autoprotections
+                ${this._t("group.tampers")}
                 ${
                   activeTampers
-                    ? `<span class="danger"> · ${activeTampers} en défaut</span>`
+                    ? `<span class="danger"> · ${this._t("group.in_fault", { count: activeTampers })}</span>`
                     : ""
                 }
               </div>
@@ -2259,32 +2052,21 @@ class SpcFlexCCard extends HTMLElement {
   _partSetLabel(areaEntity, part) {
     const attrs = areaEntity?.stateObj?.attributes || {};
     const attributeName = part === "a" ? "partset_a_name" : "partset_b_name";
-    const fallback = part === "a" ? "Partiel A" : "Partiel B";
     const value = attrs[attributeName];
 
     return value != null && String(value).trim()
       ? String(value).trim()
-      : fallback;
+      : this._t(part === "a" ? "state.part_a" : "state.part_b");
   }
 
   _renderAreaControls(area, areaEntity) {
-    if (
-      !this._config.show_controls ||
-      !areaEntity
-    ) {
+    if (!this._config.show_controls || !areaEntity) {
       return "";
     }
 
-    const {
-      entityId,
-      stateObj,
-    } = areaEntity;
-
-    const attrs =
-      stateObj?.attributes || {};
-
-    const state =
-      stateObj?.state || "unknown";
+    const { entityId, stateObj } = areaEntity;
+    const attrs = stateObj?.attributes || {};
+    const state = stateObj?.state || "unknown";
 
     const stableArmedStates = new Set([
       "armed_away",
@@ -2302,92 +2084,58 @@ class SpcFlexCCard extends HTMLElement {
           type="button"
           class="control-button primary"
           data-service="alarm_arm_away"
-          data-entity="${this._escapeHtml(
-            entityId
-          )}"
-          data-name="${this._escapeHtml(
-            area.name
-          )}"
+          data-entity="${this._escapeHtml(entityId)}"
+          data-name="${this._escapeHtml(area.name)}"
         >
           <ha-icon icon="mdi:lock"></ha-icon>
-          <span>Armer</span>
+          <span>${this._t("action.arm")}</span>
         </button>
       `);
 
-      if (
-        attrs.partset_a_enabled === true
-      ) {
+      if (attrs.partset_a_enabled === true) {
+        const label = this._partSetLabel(areaEntity, "a");
         buttons.push(`
           <button
             type="button"
             class="control-button"
             data-service="alarm_arm_home"
-            data-entity="${this._escapeHtml(
-              entityId
-            )}"
-            data-name="${this._escapeHtml(
-              area.name
-            )}"
-            data-action-label="${this._escapeHtml(
-              this._partSetLabel(areaEntity, "a")
-            )}"
+            data-entity="${this._escapeHtml(entityId)}"
+            data-name="${this._escapeHtml(area.name)}"
+            data-action-label="${this._escapeHtml(label)}"
           >
-            <ha-icon
-              icon="mdi:shield-home"
-            ></ha-icon>
-            <span>${this._escapeHtml(
-              this._partSetLabel(areaEntity, "a")
-            )}</span>
+            <ha-icon icon="mdi:shield-home"></ha-icon>
+            <span>${this._escapeHtml(label)}</span>
           </button>
         `);
       }
 
-      if (
-        attrs.partset_b_enabled === true
-      ) {
+      if (attrs.partset_b_enabled === true) {
+        const label = this._partSetLabel(areaEntity, "b");
         buttons.push(`
           <button
             type="button"
             class="control-button"
             data-service="alarm_arm_night"
-            data-entity="${this._escapeHtml(
-              entityId
-            )}"
-            data-name="${this._escapeHtml(
-              area.name
-            )}"
-            data-action-label="${this._escapeHtml(
-              this._partSetLabel(areaEntity, "b")
-            )}"
+            data-entity="${this._escapeHtml(entityId)}"
+            data-name="${this._escapeHtml(area.name)}"
+            data-action-label="${this._escapeHtml(label)}"
           >
-            <ha-icon
-              icon="mdi:weather-night"
-            ></ha-icon>
-            <span>${this._escapeHtml(
-              this._partSetLabel(areaEntity, "b")
-            )}</span>
+            <ha-icon icon="mdi:weather-night"></ha-icon>
+            <span>${this._escapeHtml(label)}</span>
           </button>
         `);
       }
-    } else if (
-      stableArmedStates.has(state)
-    ) {
+    } else if (stableArmedStates.has(state)) {
       buttons.push(`
         <button
           type="button"
           class="control-button"
           data-service="alarm_disarm"
-          data-entity="${this._escapeHtml(
-            entityId
-          )}"
-          data-name="${this._escapeHtml(
-            area.name
-          )}"
+          data-entity="${this._escapeHtml(entityId)}"
+          data-name="${this._escapeHtml(area.name)}"
         >
-          <ha-icon
-            icon="mdi:lock-open-variant"
-          ></ha-icon>
-          <span>Désarmer</span>
+          <ha-icon icon="mdi:lock-open-variant"></ha-icon>
+          <span>${this._t("action.disarm")}</span>
         </button>
       `);
     }
@@ -2410,12 +2158,8 @@ class SpcFlexCCard extends HTMLElement {
     if (!areas.length) {
       return `
         <div class="empty-state">
-          <ha-icon
-            icon="mdi:shield-home-outline"
-          ></ha-icon>
-          <div>
-            Aucun secteur SPC disponible.
-          </div>
+          <ha-icon icon="mdi:shield-home-outline"></ha-icon>
+          <div>${this._t("area.none")}</div>
         </div>
       `;
     }
@@ -2424,147 +2168,90 @@ class SpcFlexCCard extends HTMLElement {
       <div class="list area-list">
         ${areas
           .map((area) => {
-            const areaZones =
-              zones.filter(
-                (zone) =>
-                  String(zone.areaId) ===
-                  String(area.id)
-              );
+            const areaZones = zones.filter(
+              (zone) => String(zone.areaId) === String(area.id)
+            );
 
-            const normalZones =
-              areaZones.filter(
-                (zone) =>
-                  zone.zoneType !== "tamper" &&
-                  zone.deviceClass !== "tamper"
-              );
+            const normalZones = areaZones.filter(
+              (zone) =>
+                zone.zoneType !== "tamper" &&
+                zone.deviceClass !== "tamper"
+            );
 
-            const tampers =
-              areaZones.filter(
-                (zone) =>
-                  zone.zoneType === "tamper" ||
-                  zone.deviceClass === "tamper"
-              );
+            const tampers = areaZones.filter(
+              (zone) =>
+                zone.zoneType === "tamper" ||
+                zone.deviceClass === "tamper"
+            );
 
-            const activeZones =
-              normalZones.filter(
-                (zone) => zone.state === "on"
-              ).length;
+            const activeZones = normalZones.filter(
+              (zone) => zone.state === "on"
+            ).length;
 
-            const activeTampers =
-              tampers.filter(
-                (zone) =>
-                  zone.state === "on" ||
-                  zone.eventTamper === true
-              ).length;
+            const activeTampers = tampers.filter(
+              (zone) =>
+                zone.state === "on" ||
+                zone.eventTamper === true
+            ).length;
 
-            const areaEntity =
-              this._getAreaAlarmEntity(
-                area.id
-              );
+            const areaEntity = this._getAreaAlarmEntity(area.id);
 
             const mode =
-              areaEntity?.stateObj?.attributes
-                ?.mode_name ??
+              areaEntity?.stateObj?.attributes?.mode_name ??
               area.modeName ??
-              areaEntity?.stateObj?.attributes
-                ?.mode ??
+              areaEntity?.stateObj?.attributes?.mode ??
               area.mode ??
               "unknown";
 
-            const renderedState =
-              areaEntity?.stateObj?.state ||
-              null;
+            const renderedState = areaEntity?.stateObj?.state || null;
+            const stateClass = renderedState
+              ? this._stateClass(renderedState)
+              : this._modeClass(mode);
 
-            const stateClass =
-              renderedState
-                ? this._stateClass(
-                    renderedState
-                  )
-                : this._modeClass(mode);
-
-            const icon =
-              renderedState
-                ? this._stateIcon(
-                    renderedState
-                  )
-                : stateClass === "ok"
-                  ? "mdi:lock-open-variant"
-                  : "mdi:lock";
+            const icon = renderedState
+              ? this._stateIcon(renderedState)
+              : stateClass === "ok"
+                ? "mdi:lock-open-variant"
+                : "mdi:lock";
 
             const label =
-              renderedState
-                ? (renderedState === "armed_home"
-                    ? this._partSetLabel(areaEntity, "a")
-                    : renderedState === "armed_night"
-                      ? this._partSetLabel(areaEntity, "b")
-                      : this._stateLabel(
-                          renderedState
-                        ).replace(
-                          /^Désarmée$/,
-                          "Désarmé"
-                        ))
-                : this._modeLabel(mode);
+              renderedState === "armed_home"
+                ? this._partSetLabel(areaEntity, "a")
+                : renderedState === "armed_night"
+                  ? this._partSetLabel(areaEntity, "b")
+                  : renderedState === "disarmed"
+                    ? this._t("state.disarmed_masc")
+                    : renderedState
+                      ? this._stateLabel(renderedState)
+                      : this._modeLabel(mode);
 
             return `
               <div class="area-card">
                 <div class="area-card-header">
-                  <div class="area-card-title">
-                    ${this._escapeHtml(
-                      area.name
-                    )}
-                  </div>
-
-                  <div class="badge ${stateClass}">
-                    ${this._escapeHtml(
-                      label
-                    )}
-                  </div>
+                  <div class="area-card-title">${this._escapeHtml(area.name)}</div>
+                  <div class="badge ${stateClass}">${this._escapeHtml(label)}</div>
                 </div>
 
                 <div class="area-lock">
-                  <ha-icon
-                    class="${stateClass}"
-                    icon="${this._escapeHtml(
-                      icon
-                    )}"
-                  ></ha-icon>
+                  <ha-icon class="${stateClass}" icon="${this._escapeHtml(icon)}"></ha-icon>
                 </div>
 
                 <div class="area-meta">
-                  <span>
-                    ${normalZones.length}
-                    détecteur${
-                      normalZones.length > 1
-                        ? "s"
-                        : ""
-                    }
-                  </span>
-
+                  <span>${this._tCount("group.detector_count", normalZones.length)}</span>
                   ${
                     activeZones
-                      ? `<span class="warning">${activeZones} actif${
-                          activeZones > 1
-                            ? "s"
-                            : ""
-                        }</span>`
-                      : `<span class="ok">Au repos</span>`
+                      ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>`
+                      : `<span class="ok">${this._t("group.rest")}</span>`
                   }
-
                   ${
                     activeTampers
-                      ? `<span class="danger">Autoprotection</span>`
+                      ? `<span class="danger">${this._t("area.tamper")}</span>`
                       : ""
                   }
                 </div>
 
-                ${this._lastAreaChange(
-                  areaEntity?.stateObj
-                )}
-
-                ${this._renderAreaControls(
-                  area,
-                  areaEntity
-                )}
+                ${this._lastAreaChange(areaEntity?.stateObj)}
+                ${this._renderAreaControls(area, areaEntity)}
               </div>
             `;
           })
@@ -2574,39 +2261,21 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   _renderZoneRow(zone) {
-    const stateInfo =
-      this._zoneStateInfo(zone);
+    const stateInfo = this._zoneStateInfo(zone);
 
     return `
       <div class="zone-row">
-        <div class="zone-icon ${
-          stateInfo.className
-        }">
-          <ha-icon
-            icon="${this._escapeHtml(
-              this._zoneIcon(zone)
-            )}"
-          ></ha-icon>
+        <div class="zone-icon ${stateInfo.className}">
+          <ha-icon icon="${this._escapeHtml(this._zoneIcon(zone))}"></ha-icon>
         </div>
 
         <div class="zone-main">
-          <div class="zone-name">
-            ${this._escapeHtml(zone.name)}
-          </div>
-
-          <div class="zone-area">
-            ${this._escapeHtml(
-              this._areaName(zone.areaId)
-            )}
-          </div>
+          <div class="zone-name">${this._escapeHtml(zone.name)}</div>
+          <div class="zone-area">${this._escapeHtml(this._areaName(zone.areaId))}</div>
         </div>
 
-        <div class="zone-state ${
-          stateInfo.className
-        }">
-          ${this._escapeHtml(
-            stateInfo.label
-          )}
+        <div class="zone-state ${stateInfo.className}">
+          ${this._escapeHtml(stateInfo.label)}
         </div>
       </div>
     `;
@@ -2616,19 +2285,11 @@ class SpcFlexCCard extends HTMLElement {
     const zones = this._getNormalZones();
     const tampers = this._getTamperZones();
 
-    if (
-      !zones.length &&
-      !tampers.length
-    ) {
+    if (!zones.length && !tampers.length) {
       return `
         <div class="empty-state">
-          <ha-icon
-            icon="mdi:motion-sensor-off"
-          ></ha-icon>
-
-          <div>
-            Aucune zone SPC découverte.
-          </div>
+          <ha-icon icon="mdi:motion-sensor-off"></ha-icon>
+          <div>${this._t("zone.none")}</div>
         </div>
       `;
     }
@@ -2639,16 +2300,11 @@ class SpcFlexCCard extends HTMLElement {
           zones.length
             ? `
               <div class="group-title">
-                Détecteurs
+                ${this._t("group.detectors")}
                 <span>${zones.length}</span>
               </div>
-
               <div class="zone-list">
-                ${zones
-                  .map((zone) =>
-                    this._renderZoneRow(zone)
-                  )
-                  .join("")}
+                ${zones.map((zone) => this._renderZoneRow(zone)).join("")}
               </div>
             `
             : ""
@@ -2658,16 +2314,11 @@ class SpcFlexCCard extends HTMLElement {
           tampers.length
             ? `
               <div class="group-title tamper-title">
-                Autoprotections
+                ${this._t("group.tampers")}
                 <span>${tampers.length}</span>
               </div>
-
               <div class="zone-list tamper-list">
-                ${tampers
-                  .map((zone) =>
-                    this._renderZoneRow(zone)
-                  )
-                  .join("")}
+                ${tampers.map((zone) => this._renderZoneRow(zone)).join("")}
               </div>
             `
             : ""
@@ -3469,28 +3120,24 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   _render() {
-    if (
-      !this._config ||
-      !this._hass
-    ) {
+    if (!this._config || !this._hass) {
       return;
     }
 
-    const stateObj =
-      this._getAlarmEntity();
+    const stateObj = this._getAlarmEntity();
 
     if (!stateObj) {
       this.innerHTML = `
         <ha-card>
           <div style="padding:16px">
-            Entity not found:
             ${this._escapeHtml(
-              this._config.entity
+              this._t("card.entity_not_found", {
+                entity: this._config.entity,
+              })
             )}
           </div>
         </ha-card>
       `;
-
       return;
     }
 
@@ -3509,7 +3156,6 @@ class SpcFlexCCard extends HTMLElement {
               <div class="title">
                 ${this._escapeHtml(title)}
               </div>
-
             </div>
           </div>
 
@@ -3522,53 +3168,33 @@ class SpcFlexCCard extends HTMLElement {
       </ha-card>
     `;
 
-    this.querySelectorAll(
-      "[data-tab]"
-    ).forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          this._activeTab =
-            button.dataset.tab;
-
-          this._saveActiveTab(this._activeTab);
-          this._render();
-        }
-      );
+    this.querySelectorAll("[data-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._activeTab = button.dataset.tab;
+        this._saveActiveTab(this._activeTab);
+        this._render();
+      });
     });
 
-    this.querySelectorAll(
-      "[data-service]"
-    ).forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          this._callAlarmService(
-            button.dataset.service,
-            button.dataset.entity ||
-              this._config.entity,
-            button.dataset.name || null,
-            button.dataset.actionLabel || null
-          );
-        }
-      );
+    this.querySelectorAll("[data-service]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._callAlarmService(
+          button.dataset.service,
+          button.dataset.entity || this._config.entity,
+          button.dataset.name || null,
+          button.dataset.actionLabel || null
+        );
+      });
     });
 
-    this.querySelectorAll(
-      "[data-door-entity]"
-    ).forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          this._callDoorButton(
-            button.dataset.doorEntity,
-            button.dataset.doorName ||
-              "Porte SPC",
-            button.dataset.doorAction ||
-              "Exécuter la commande"
-          );
-        }
-      );
+    this.querySelectorAll("[data-door-entity]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._callDoorButton(
+          button.dataset.doorEntity,
+          button.dataset.doorName || this._t("door.fallback_name"),
+          button.dataset.doorAction || this._t("action.execute")
+        );
+      });
     });
   }
 }
@@ -3598,28 +3224,29 @@ class SpcFlexCCardEditor extends HTMLElement {
       .replaceAll("'", "&#039;");
   }
 
+  _t(key, variables = {}, fallback = key) {
+    if (typeof spcFlexCTranslate === "function") {
+      return spcFlexCTranslate(this._hass, key, variables, fallback);
+    }
+    return fallback;
+  }
+
   _changed() {
     const config = {
       ...this._config,
 
       entity:
-        this.querySelector("#entity")
-          ?.value || "",
+        this.querySelector("#entity")?.value || "",
 
       name:
-        this.querySelector("#name")
-          ?.value || undefined,
+        this.querySelector("#name")?.value || undefined,
 
       show_controls: Boolean(
-        this.querySelector(
-          "#show_controls"
-        )?.checked
+        this.querySelector("#show_controls")?.checked
       ),
 
       confirm_actions: Boolean(
-        this.querySelector(
-          "#confirm_actions"
-        )?.checked
+        this.querySelector("#confirm_actions")?.checked
       ),
     };
 
@@ -3629,9 +3256,7 @@ class SpcFlexCCardEditor extends HTMLElement {
       new CustomEvent(
         "config-changed",
         {
-          detail: {
-            config,
-          },
+          detail: { config },
           bubbles: true,
           composed: true,
         }
@@ -3640,48 +3265,27 @@ class SpcFlexCCardEditor extends HTMLElement {
   }
 
   _render() {
-    if (
-      !this._config ||
-      !this._hass
-    ) {
+    if (!this._config || !this._hass) {
       return;
     }
 
-    const options =
-      Object.keys(this._hass.states)
-        .filter((id) =>
-          id.startsWith(
-            "alarm_control_panel."
-          )
-        )
-        .map((id) => {
-          const stateObj =
-            this._hass.states[id];
+    const options = Object.keys(this._hass.states)
+      .filter((id) => id.startsWith("alarm_control_panel."))
+      .map((id) => {
+        const stateObj = this._hass.states[id];
+        const name = stateObj?.attributes?.friendly_name || id;
 
-          const name =
-            stateObj?.attributes
-              ?.friendly_name || id;
-
-          return `
-            <option
-              value="${this._escapeHtml(
-                id
-              )}"
-              ${
-                id ===
-                this._config.entity
-                  ? "selected"
-                  : ""
-              }
-            >
-              ${this._escapeHtml(
-                name
-              )}
-              (${this._escapeHtml(id)})
-            </option>
-          `;
-        })
-        .join("");
+        return `
+          <option
+            value="${this._escapeHtml(id)}"
+            ${id === this._config.entity ? "selected" : ""}
+          >
+            ${this._escapeHtml(name)}
+            (${this._escapeHtml(id)})
+          </option>
+        `;
+      })
+      .join("");
 
     this.innerHTML = `
       <style>
@@ -3721,26 +3325,19 @@ class SpcFlexCCardEditor extends HTMLElement {
 
       <div class="editor">
         <label>
-          Entité d'alarme
-
+          ${this._t("editor.entity")}
           <select id="entity">
-            <option value="">
-              Sélectionner une entité
-            </option>
-
+            <option value="">${this._t("editor.select_entity")}</option>
             ${options}
           </select>
         </label>
 
         <label>
-          Nom de la carte
-
+          ${this._t("editor.name")}
           <input
             id="name"
             type="text"
-            value="${this._escapeHtml(
-              this._config.name || ""
-            )}"
+            value="${this._escapeHtml(this._config.name || "")}"
             placeholder="SPC FlexC"
           >
         </label>
@@ -3749,95 +3346,48 @@ class SpcFlexCCardEditor extends HTMLElement {
           <input
             id="show_controls"
             type="checkbox"
-            ${
-              this._config
-                .show_controls !== false
-                ? "checked"
-                : ""
-            }
+            ${this._config.show_controls !== false ? "checked" : ""}
           >
-
-          Afficher les commandes d'alarme
+          ${this._t("editor.show_controls")}
         </label>
 
         <label class="toggle">
           <input
             id="confirm_actions"
             type="checkbox"
-            ${
-              this._config
-                .confirm_actions !== false
-                ? "checked"
-                : ""
-            }
+            ${this._config.confirm_actions !== false ? "checked" : ""}
           >
-
-          Confirmer les actions d'armement/désarmement
+          ${this._t("editor.confirm_actions")}
         </label>
 
         <div class="help">
-          Les secteurs sont récupérés depuis l'entité d'alarme.
-          Les détecteurs SPC sont découverts automatiquement parmi
-          les binary_sensor possédant les attributs zone_id, area_id
-          et spc_zone_type. Les diagnostics et informations techniques
-          sont rattachés à la même intégration via les registres Home
-          Assistant quand ceux-ci sont disponibles.
+          ${this._t("editor.help")}
         </div>
       </div>
     `;
 
-    this.querySelectorAll(
-      "input, select"
-    ).forEach((element) => {
-      element.addEventListener(
-        "change",
-        () => this._changed()
-      );
-
-      element.addEventListener(
-        "input",
-        () => this._changed()
-      );
+    this.querySelectorAll("input, select").forEach((element) => {
+      element.addEventListener("change", () => this._changed());
+      element.addEventListener("input", () => this._changed());
     });
   }
 }
 
-if (
-  !customElements.get(
-    "spc-flexc-card"
-  )
-) {
-  customElements.define(
-    "spc-flexc-card",
-    SpcFlexCCard
-  );
+if (!customElements.get("spc-flexc-card")) {
+  customElements.define("spc-flexc-card", SpcFlexCCard);
 }
 
-if (
-  !customElements.get(
-    "spc-flexc-card-editor"
-  )
-) {
-  customElements.define(
-    "spc-flexc-card-editor",
-    SpcFlexCCardEditor
-  );
+if (!customElements.get("spc-flexc-card-editor")) {
+  customElements.define("spc-flexc-card-editor", SpcFlexCCardEditor);
 }
 
-window.customCards =
-  window.customCards || [];
+window.customCards = window.customCards || [];
 
-if (
-  !window.customCards.some(
-    (card) =>
-      card.type === "spc-flexc-card"
-  )
-) {
+if (!window.customCards.some((card) => card.type === "spc-flexc-card")) {
   window.customCards.push({
     type: "spc-flexc-card",
     name: "SPC FlexC Card",
-    description:
-      "Visual alarm control card for the SPC FlexC Home Assistant integration.",
+    description: "",
     preview: true,
     documentationURL:
       "https://github.com/minimicro34/ha-spc-flexc-card",
@@ -3850,7 +3400,7 @@ console.info(
   "color:#1565c0;background:white;font-weight:700;"
 );
 
-/* SPC FlexC Card v1.0.4 extensions: Mapping Gates, door supervision and zone inhibition. */
+/* SPC FlexC Card v1.0.5 extensions: Mapping Gates, door supervision and zone inhibition. */
 
 const spcFlexCBaseLoadActiveTab = SpcFlexCCard.prototype._loadActiveTab;
 const spcFlexCBaseGetZones = SpcFlexCCard.prototype._getZones;
@@ -3902,7 +3452,7 @@ SpcFlexCCard.prototype._getMappingGates = function () {
         name:
           attrs.mg_name ||
           attrs.friendly_name ||
-          (mgId != null ? `Sortie ${mgId}` : entityId),
+          (mgId != null ? this._t("output.name", { id: mgId }) : entityId),
         state: stateObj.state,
       };
     })
@@ -3964,7 +3514,7 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
         <div class="zone-name">${this._escapeHtml(zone.name)}</div>
         <div class="zone-area">
           ${this._escapeHtml(this._areaName(zone.areaId))}
-          ${inhibited ? '<span class="zone-operating-badge warning">INHIBÉ</span>' : ""}
+          ${inhibited ? `<span class="zone-operating-badge warning">${this._t("zone.inhibited")}</span>` : ""}
         </div>
       </div>
 
@@ -3993,9 +3543,9 @@ SpcFlexCCard.prototype._getDoors = function () {
 
 SpcFlexCCard.prototype._doorModeLabel = function (mode) {
   const value = Number(mode);
-  if (value === 0) return "Normal";
-  if (value === 1) return "Accès interdit";
-  if (value === 2) return "Accès libre";
+  if (value === 0) return this._t("state.normal");
+  if (value === 1) return this._t("door.access_forbidden");
+  if (value === 2) return this._t("door.free_access");
   return mode == null ? "—" : String(mode);
 };
 
@@ -4005,7 +3555,7 @@ SpcFlexCCard.prototype._renderDoors = function () {
     return `
       <div class="empty-state">
         <ha-icon icon="mdi:door-closed-lock"></ha-icon>
-        <div>Aucune porte SPC découverte.</div>
+        <div>${this._t("door.none")}</div>
       </div>
     `;
   }
@@ -4023,30 +3573,30 @@ SpcFlexCCard.prototype._renderDoors = function () {
           </div>
           <div class="door-state-grid door-supervision-grid">
             <div class="door-state-card">
-              <div class="door-state-label">Status</div>
+              <div class="door-state-label">${this._t("door.status")}</div>
               <div class="door-state-value">${this._escapeHtml(door.status ?? "—")}</div>
             </div>
             <div class="door-state-card">
-              <div class="door-state-label">Mode</div>
+              <div class="door-state-label">${this._t("door.mode")}</div>
               <div class="door-state-value">${this._escapeHtml(this._doorModeLabel(door.mode))}</div>
             </div>
             <div class="door-state-card">
-              <div class="door-state-label">DPS</div>
+              <div class="door-state-label">${this._t("door.dps")}</div>
               <div class="door-state-value">${this._escapeHtml(door.dpsInput ?? "—")}</div>
             </div>
             <div class="door-state-card">
-              <div class="door-state-label">DRS</div>
+              <div class="door-state-label">${this._t("door.drs")}</div>
               <div class="door-state-value">${this._escapeHtml(door.drsInput ?? "—")}</div>
             </div>
           </div>
           ${door.zoneName ? `
             <div class="door-zone">
               <ha-icon icon="mdi:shield-home-outline"></ha-icon>
-              <span>Zone ${this._escapeHtml(door.zoneId ?? "")}${door.zoneId != null ? " · " : ""}${this._escapeHtml(door.zoneName)}</span>
+              <span>${this._t("zone.name", { id: door.zoneId ?? "" })}${door.zoneId != null ? " · " : ""}${this._escapeHtml(door.zoneName)}</span>
             </div>
           ` : ""}
           <div class="door-raw-note">
-            Supervision FlexC uniquement. Les commandes de mode de porte ne sont pas présentées comme une commande physique de serrure.
+            ${this._t("door.supervision_note")}
           </div>
         </div>
       `).join("")}
@@ -4060,18 +3610,25 @@ SpcFlexCCard.prototype._renderOutputs = function () {
     return `
       <div class="empty-state">
         <ha-icon icon="mdi:electric-switch"></ha-icon>
-        <div>Aucune sortie SPC (Mapping Gate) découverte.</div>
+        <div>${this._t("output.none")}</div>
       </div>
     `;
   }
 
   return `
     <div class="outputs-view">
-      <div class="group-title">Sorties <span>${outputs.length}</span></div>
+      <div class="group-title">${this._t("tab.outputs")} <span>${outputs.length}</span></div>
       <div class="output-list">
         ${outputs.map((output) => {
           const isOn = output.state === "on";
           const unavailable = ["unknown", "unavailable"].includes(output.state);
+          const stateLabel = output.state === "unavailable"
+            ? this._t("state.unavailable")
+            : output.state === "unknown"
+              ? this._t("state.unknown_short")
+              : isOn
+                ? this._t("state.on")
+                : this._t("state.off");
           return `
             <div class="output-row">
               <div class="output-icon ${unavailable ? "muted" : isOn ? "ok" : "muted"}">
@@ -4079,19 +3636,19 @@ SpcFlexCCard.prototype._renderOutputs = function () {
               </div>
               <div class="output-main">
                 <div class="output-name">${this._escapeHtml(output.name)}</div>
-                <div class="output-id">Mapping Gate ${this._escapeHtml(output.id ?? "—")}</div>
+                <div class="output-id">${this._t("output.mapping_gate")} ${this._escapeHtml(output.id ?? "—")}</div>
               </div>
               <div class="output-state ${unavailable ? "muted" : isOn ? "ok" : "muted"}">
-                ${unavailable ? this._escapeHtml(output.state) : isOn ? "ON" : "OFF"}
+                ${this._escapeHtml(stateLabel)}
               </div>
               ${this._config.show_controls === false ? "" : `
                 <div class="output-controls">
                   <button type="button" class="output-button${isOn ? " active" : ""}"
                     data-mg-entity="${this._escapeHtml(output.entityId)}"
-                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="on">ON</button>
+                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="on">${this._t("state.on")}</button>
                   <button type="button" class="output-button${!isOn && !unavailable ? " active" : ""}"
                     data-mg-entity="${this._escapeHtml(output.entityId)}"
-                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="off">OFF</button>
+                    data-mg-name="${this._escapeHtml(output.name)}" data-mg-action="off">${this._t("state.off")}</button>
                 </div>
               `}
             </div>
@@ -4109,12 +3666,12 @@ SpcFlexCCard.prototype._renderTabs = function () {
   if (this._activeTab === "outputs" && !hasOutputs) this._activeTab = "system";
 
   const tabs = [
-    ["system", "Général"],
-    ["areas", "Secteurs"],
-    ["zones", "Détecteurs"],
-    ...(hasDoors ? [["doors", "Portes"]] : []),
-    ...(hasOutputs ? [["outputs", "Sorties"]] : []),
-    ["technical", "Système"],
+    ["system", this._t("tab.general")],
+    ["areas", this._t("tab.areas")],
+    ["zones", this._t("tab.detectors")],
+    ...(hasDoors ? [["doors", this._t("tab.doors")]] : []),
+    ...(hasOutputs ? [["outputs", this._t("tab.outputs")]] : []),
+    ["technical", this._t("tab.system")],
   ];
 
   return `<div class="tabs">${tabs.map(([id, label]) => `
@@ -4138,8 +3695,9 @@ SpcFlexCCard.prototype._renderActiveView = function () {
 
 SpcFlexCCard.prototype._callMappingGate = async function (entityId, name, action) {
   if (!this._hass || !entityId || !["on", "off"].includes(action)) return;
-  const label = action === "on" ? "Activer" : "Désactiver";
-  if (this._config.confirm_actions && !window.confirm(`${label} — ${name} ?`)) return;
+  const actionLabel = action === "on" ? this._t("action.activate") : this._t("action.deactivate");
+  const prompt = this._t("confirm.mapping_gate", { action: actionLabel, name });
+  if (this._config.confirm_actions && !window.confirm(prompt)) return;
   await this._hass.callService("switch", action === "on" ? "turn_on" : "turn_off", {
     entity_id: entityId,
   });
@@ -4212,14 +3770,592 @@ SpcFlexCCard.prototype._render = function () {
     button.addEventListener("click", () => {
       this._callMappingGate(
         button.dataset.mgEntity,
-        button.dataset.mgName || "Sortie SPC",
+        button.dataset.mgName || this._t("output.fallback_name"),
         button.dataset.mgAction
       );
     });
   });
 };
 
-/* SPC FlexC Card v1.0.4 render scheduler. */
+/* SPC FlexC Card v1.0.5 zone grouping extension. */
+
+const spcFlexCZoneGroupsBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCZoneGroupsBaseRender = SpcFlexCCard.prototype._render;
+
+SpcFlexCCard.prototype._zoneGroupsStorageKey = function () {
+  const entity = this._config?.entity;
+  return entity ? `spc-flexc-card:${entity}:zone-groups` : null;
+};
+
+SpcFlexCCard.prototype._loadZoneGroupStates = function () {
+  if (this._spcZoneGroupStates) return this._spcZoneGroupStates;
+
+  this._spcZoneGroupStates = {};
+  const key = this._zoneGroupsStorageKey();
+  if (!key) return this._spcZoneGroupStates;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        this._spcZoneGroupStates = parsed;
+      }
+    }
+  } catch {
+    // Keep in-memory state when persistent browser storage is unavailable.
+  }
+
+  return this._spcZoneGroupStates;
+};
+
+SpcFlexCCard.prototype._saveZoneGroupStates = function () {
+  const key = this._zoneGroupsStorageKey();
+  if (!key) return;
+
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify(this._spcZoneGroupStates || {})
+    );
+  } catch {
+    // Home Assistant can still keep the state until the card is recreated.
+  }
+};
+
+SpcFlexCCard.prototype._zoneGroupExpanded = function (areaId, totalZones) {
+  const states = this._loadZoneGroupStates();
+  const key = String(areaId);
+
+  if (Object.prototype.hasOwnProperty.call(states, key)) {
+    return states[key] === true;
+  }
+
+  // Keep small installations familiar while large panels start compact.
+  return totalZones <= 40;
+};
+
+SpcFlexCCard.prototype._setZoneGroupExpanded = function (areaId, expanded) {
+  const states = this._loadZoneGroupStates();
+  states[String(areaId)] = Boolean(expanded);
+  this._saveZoneGroupStates();
+};
+
+SpcFlexCCard.prototype._getZoneGroups = function () {
+  const zones = this._getZones();
+  const areas = this._getAreas();
+  const groups = new Map();
+
+  for (const area of areas) {
+    groups.set(String(area.id), {
+      id: String(area.id),
+      name: area.name,
+      numericId: area.numericId,
+      zones: [],
+    });
+  }
+
+  for (const zone of zones) {
+    const key = String(zone.areaId);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        name: this._areaName(zone.areaId),
+        numericId: Number(zone.areaId),
+        zones: [],
+      });
+    }
+    groups.get(key).zones.push(zone);
+  }
+
+  return Array.from(groups.values())
+    .filter((group) => group.zones.length > 0)
+    .sort((a, b) => {
+      if (Number.isFinite(a.numericId) && Number.isFinite(b.numericId)) {
+        return a.numericId - b.numericId;
+      }
+      return a.name.localeCompare(b.name);
+    });
+};
+
+SpcFlexCCard.prototype._renderZones = function () {
+  const groups = this._getZoneGroups();
+  const totalZones = groups.reduce((count, group) => count + group.zones.length, 0);
+
+  if (!totalZones) {
+    return `
+      <div class="empty-state">
+        <ha-icon icon="mdi:motion-sensor-off"></ha-icon>
+        <div>${this._t("zone.none")}</div>
+      </div>
+    `;
+  }
+
+  const allExpanded = groups.every((group) =>
+    this._zoneGroupExpanded(group.id, totalZones)
+  );
+
+  return `
+    <div class="zones-view grouped-zones-view">
+      <div class="zone-groups-toolbar">
+        <div class="group-title">
+          ${this._t("group.detectors")}
+          <span>${totalZones}</span>
+        </div>
+        <button
+          type="button"
+          class="zone-groups-toggle-all"
+          data-zone-groups-action="${allExpanded ? "collapse" : "expand"}"
+        >
+          ${this._t(allExpanded ? "group.collapse_all" : "group.expand_all")}
+        </button>
+      </div>
+
+      <div class="zone-groups-list">
+        ${groups.map((group) => {
+          const expanded = this._zoneGroupExpanded(group.id, totalZones);
+          const normalZones = group.zones.filter(
+            (zone) => zone.zoneType !== "tamper" && zone.deviceClass !== "tamper"
+          );
+          const tampers = group.zones.filter(
+            (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
+          );
+          const activeZones = normalZones.filter((zone) => zone.state === "on").length;
+          const activeTampers = tampers.filter(
+            (zone) => zone.state === "on" || zone.eventTamper === true
+          ).length;
+          const unavailable = group.zones.filter(
+            (zone) => ["unknown", "unavailable"].includes(zone.state)
+          ).length;
+
+          return `
+            <section class="zone-group${expanded ? " expanded" : " collapsed"}">
+              <button
+                type="button"
+                class="zone-group-header"
+                data-zone-group-id="${this._escapeHtml(group.id)}"
+                aria-expanded="${expanded ? "true" : "false"}"
+              >
+                <ha-icon
+                  class="zone-group-chevron"
+                  icon="${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}"
+                ></ha-icon>
+
+                <div class="zone-group-title-wrap">
+                  <div class="zone-group-title">${this._escapeHtml(group.name)}</div>
+                  <div class="zone-group-meta">
+                    ${this._tCount("group.detector_count", normalZones.length)}
+                    ${tampers.length ? ` · ${this._tCount("group.tamper_count", tampers.length)}` : ""}
+                  </div>
+                </div>
+
+                <div class="zone-group-summary">
+                  ${activeZones ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>` : ""}
+                  ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
+                  ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
+                  ${!activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
+                </div>
+              </button>
+
+              ${expanded ? `
+                <div class="zone-group-content">
+                  ${normalZones.length ? `
+                    <div class="zone-list">
+                      ${normalZones.map((zone) => this._renderZoneRow(zone)).join("")}
+                    </div>
+                  ` : ""}
+
+                  ${tampers.length ? `
+                    <div class="group-title tamper-title">
+                      ${this._t("group.tampers")}
+                      <span>${tampers.length}</span>
+                    </div>
+                    <div class="zone-list tamper-list">
+                      ${tampers.map((zone) => this._renderZoneRow(zone)).join("")}
+                    </div>
+                  ` : ""}
+                </div>
+              ` : ""}
+            </section>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+};
+
+SpcFlexCCard.prototype._styles = function () {
+  return `${spcFlexCZoneGroupsBaseStyles.call(this)}
+    <style>
+      .zone-groups-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .zone-groups-toggle-all, .zone-group-header { appearance:none; border:0; font:inherit; color:inherit; cursor:pointer; }
+      .zone-groups-toggle-all { padding:6px 9px; border-radius:8px; background:var(--secondary-background-color,rgba(127,127,127,.08)); color:var(--primary-color); font-size:12px; font-weight:700; }
+      .zone-groups-list { display:grid; gap:10px; }
+      .zone-group { overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; }
+      .zone-group-header { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:10px; width:100%; padding:12px; background:var(--secondary-background-color,rgba(127,127,127,.06)); text-align:left; }
+      .zone-group-header:hover { background:var(--secondary-background-color,rgba(127,127,127,.1)); }
+      .zone-group-chevron { --mdc-icon-size:22px; color:var(--secondary-text-color); }
+      .zone-group-title-wrap { min-width:0; }
+      .zone-group-title { overflow:hidden; font-size:15px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+      .zone-group-meta { margin-top:2px; color:var(--secondary-text-color); font-size:11px; }
+      .zone-group-summary { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:4px 9px; font-size:12px; font-weight:700; text-align:right; }
+      .zone-group-content { display:grid; gap:8px; padding:9px; }
+      .zone-group-content .tamper-title { margin:8px 3px 0; }
+      @media (max-width:520px) {
+        .zone-group-header { grid-template-columns:24px minmax(0,1fr); }
+        .zone-group-summary { grid-column:2; justify-content:flex-start; text-align:left; }
+        .zone-groups-toolbar { align-items:flex-start; }
+      }
+    </style>`;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  spcFlexCZoneGroupsBaseRender.call(this);
+
+  this.querySelectorAll("[data-zone-group-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const areaId = button.dataset.zoneGroupId;
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      this._setZoneGroupExpanded(areaId, !expanded);
+      this._render();
+    });
+  });
+
+  this.querySelectorAll("[data-zone-groups-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const expand = button.dataset.zoneGroupsAction === "expand";
+      const groups = this._getZoneGroups();
+      for (const group of groups) this._setZoneGroupExpanded(group.id, expand);
+      this._render();
+    });
+  });
+};
+
+/* SPC FlexC Card v1.0.5 translations. */
+
+const SPC_FLEXC_CARD_TRANSLATIONS = {
+  fr: {
+    "card.description": "Carte de contrôle visuelle pour l’intégration Home Assistant SPC FlexC.",
+    "card.entity_not_found": "Entité introuvable : {entity}",
+    "tab.general": "Général",
+    "tab.areas": "Secteurs",
+    "tab.detectors": "Détecteurs",
+    "tab.doors": "Portes",
+    "tab.outputs": "Sorties",
+    "tab.system": "Système",
+    "state.disarmed": "Désarmée",
+    "state.disarmed_masc": "Désarmé",
+    "state.armed": "Armée",
+    "state.armed_masc": "Armé",
+    "state.part_a": "Partiel A",
+    "state.part_b": "Partiel B",
+    "state.partial": "Partiel",
+    "state.alarm": "ALARME",
+    "state.arming": "Armement…",
+    "state.disarming": "Désarmement…",
+    "state.pending": "Temporisation",
+    "state.unavailable": "Indisponible",
+    "state.unknown": "État inconnu",
+    "state.unknown_short": "Inconnu",
+    "state.normal": "Normal",
+    "state.on": "Activé",
+    "state.off": "Désactivé",
+    "state.connected": "Connectée",
+    "state.disconnected": "Déconnectée",
+    "state.ok": "OK",
+    "state.inactive": "Inactif",
+    "state.fault": "Défaut",
+    "state.isolated": "Isolé",
+    "state.not_isolated": "Non isolé",
+    "zone.motion": "Mouvement",
+    "zone.rest": "Repos",
+    "zone.open": "Ouvert",
+    "zone.closed": "Fermé",
+    "zone.smoke": "Fumée détectée",
+    "zone.heat": "Chaleur détectée",
+    "zone.active": "Actif",
+    "zone.tamper": "AUTOPROTECTION",
+    "zone.inhibited": "INHIBÉ",
+    "zone.none": "Aucune zone SPC découverte.",
+    "zone.name": "Zone {id}",
+    "area.none": "Aucun secteur SPC disponible.",
+    "area.name": "Secteur {id}",
+    "area.last_set": "Dernier armement",
+    "area.last_unset": "Dernier désarmement",
+    "area.tamper": "Autoprotection",
+    "door.none": "Aucune porte SPC découverte.",
+    "door.name": "Porte {id}",
+    "door.fallback_name": "Porte SPC",
+    "door.status": "État",
+    "door.mode": "Mode",
+    "door.dps": "DPS",
+    "door.drs": "DRS",
+    "door.access_forbidden": "Accès interdit",
+    "door.free_access": "Accès libre",
+    "door.unknown_area": "Association secteur inconnue",
+    "door.supervision_note": "Supervision FlexC uniquement. Les commandes de mode de porte ne sont pas présentées comme une commande physique de serrure.",
+    "door.raw_note": "État et Mode sont affichés tels que fournis par SPC tant que leur signification n’est pas validée sur matériel réel.",
+    "output.none": "Aucune sortie SPC (Mapping Gate) découverte.",
+    "output.name": "Sortie {id}",
+    "output.fallback_name": "Sortie SPC",
+    "output.mapping_gate": "Mapping Gate",
+    "group.detectors": "Détecteurs",
+    "group.tampers": "Autoprotections",
+    "group.expand_all": "Tout développer",
+    "group.collapse_all": "Tout réduire",
+    "group.rest": "Au repos",
+    "group.detector_count.one": "{count} détecteur",
+    "group.detector_count.other": "{count} détecteurs",
+    "group.area_count.one": "{count} secteur",
+    "group.area_count.other": "{count} secteurs",
+    "group.tamper_count.one": "{count} autoprotection",
+    "group.tamper_count.other": "{count} autoprotections",
+    "group.active_count.one": "{count} actif",
+    "group.active_count.other": "{count} actifs",
+    "group.fault_count.one": "{count} défaut",
+    "group.fault_count.other": "{count} défauts",
+    "group.unavailable_count.one": "{count} indisponible",
+    "group.unavailable_count.other": "{count} indisponibles",
+    "group.in_fault": "{count} en défaut",
+    "group.no_area": "Aucun secteur",
+    "group.no_detector": "Aucun détecteur",
+    "system.health": "État et défauts",
+    "system.connection": "Connexion FlexC",
+    "system.state_unknown": "État non déterminé",
+    "system.entity_missing": "Entité non exposée",
+    "system.engineer_active": "Mode ingénieur actif",
+    "system.engineer_detail": "L’état est remonté en temps réel par la centrale.",
+    "system.active_faults": "Défauts actifs",
+    "system.no_fault": "Aucun défaut actif",
+    "system.faults_unknown": "Défauts système non déterminés : métadonnées indisponibles.",
+    "system.card": "Carte SPC FlexC",
+    "system.panel": "Centrale",
+    "system.manufacturer": "Fabricant",
+    "system.model": "Modèle",
+    "system.firmware": "Firmware",
+    "system.hardware": "Matériel",
+    "system.serial": "N° de série",
+    "system.power": "Alimentation",
+    "system.ac_frequency": "Fréquence secteur",
+    "system.battery_voltage": "Tension batterie",
+    "system.aux_voltage": "Tension auxiliaire",
+    "system.aux_current": "Courant auxiliaire",
+    "system.communication": "Communication FlexC",
+    "system.state": "État",
+    "system.ats_used": "ATS utilisé",
+    "system.last_tx": "Dernière transmission réussie",
+    "system.xbus": "X-BUS",
+    "system.xbus_id": "ID X-BUS",
+    "system.sia_address": "Adresse SIA",
+    "system.tamper": "Autoprotection",
+    "system.tamper_isolation": "Isolement autoprotection",
+    "system.rf": "RF",
+    "system.modem": "Modem",
+    "action.disarm": "Désarmer",
+    "action.full_arm": "Armement total",
+    "action.arm": "Armer",
+    "action.activate": "Activer",
+    "action.deactivate": "Désactiver",
+    "action.execute": "Exécuter la commande",
+    "action.door_momentary": "Ouverture momentanée",
+    "action.door_permanent": "Ouverture permanente",
+    "action.door_normal": "Retour au mode normal",
+    "action.door_lock": "Verrouiller",
+    "confirm.generic": "Exécuter l'action sur {name} ?",
+    "confirm.disarm": "Désarmer {name} ?",
+    "confirm.full_arm": "Armer complètement {name} ?",
+    "confirm.part_set": "Activer {action} sur {name} ?",
+    "confirm.mapping_gate": "{action} — {name} ?",
+    "confirm.door": "{action} — {name} ?",
+    "editor.entity": "Entité d'alarme",
+    "editor.select_entity": "Sélectionner une entité",
+    "editor.name": "Nom de la carte",
+    "editor.show_controls": "Afficher les commandes d'alarme",
+    "editor.confirm_actions": "Confirmer les actions d'armement/désarmement",
+    "editor.help": "Les secteurs sont récupérés depuis l'entité d'alarme. Les détecteurs SPC sont découverts automatiquement parmi les binary_sensor possédant les attributs zone_id, area_id et spc_zone_type. Les diagnostics et informations techniques sont rattachés à la même intégration via les registres Home Assistant quand ceux-ci sont disponibles.",
+  },
+  en: {
+    "card.description": "Visual alarm control card for the SPC FlexC Home Assistant integration.",
+    "card.entity_not_found": "Entity not found: {entity}",
+    "tab.general": "General",
+    "tab.areas": "Areas",
+    "tab.detectors": "Detectors",
+    "tab.doors": "Doors",
+    "tab.outputs": "Outputs",
+    "tab.system": "System",
+    "state.disarmed": "Disarmed",
+    "state.disarmed_masc": "Disarmed",
+    "state.armed": "Armed",
+    "state.armed_masc": "Armed",
+    "state.part_a": "Part Set A",
+    "state.part_b": "Part Set B",
+    "state.partial": "Part set",
+    "state.alarm": "ALARM",
+    "state.arming": "Arming…",
+    "state.disarming": "Disarming…",
+    "state.pending": "Pending",
+    "state.unavailable": "Unavailable",
+    "state.unknown": "Unknown state",
+    "state.unknown_short": "Unknown",
+    "state.normal": "Normal",
+    "state.on": "On",
+    "state.off": "Off",
+    "state.connected": "Connected",
+    "state.disconnected": "Disconnected",
+    "state.ok": "OK",
+    "state.inactive": "Inactive",
+    "state.fault": "Fault",
+    "state.isolated": "Isolated",
+    "state.not_isolated": "Not isolated",
+    "zone.motion": "Motion",
+    "zone.rest": "Idle",
+    "zone.open": "Open",
+    "zone.closed": "Closed",
+    "zone.smoke": "Smoke detected",
+    "zone.heat": "Heat detected",
+    "zone.active": "Active",
+    "zone.tamper": "TAMPER",
+    "zone.inhibited": "INHIBITED",
+    "zone.none": "No SPC zone discovered.",
+    "zone.name": "Zone {id}",
+    "area.none": "No SPC area available.",
+    "area.name": "Area {id}",
+    "area.last_set": "Last arm",
+    "area.last_unset": "Last disarm",
+    "area.tamper": "Tamper",
+    "door.none": "No SPC door discovered.",
+    "door.name": "Door {id}",
+    "door.fallback_name": "SPC door",
+    "door.status": "Status",
+    "door.mode": "Mode",
+    "door.dps": "DPS",
+    "door.drs": "DRS",
+    "door.access_forbidden": "Access forbidden",
+    "door.free_access": "Free access",
+    "door.unknown_area": "Unknown area association",
+    "door.supervision_note": "FlexC supervision only. Door mode commands are not presented as physical lock commands.",
+    "door.raw_note": "Status and Mode are displayed as provided by SPC until their meaning is validated on real hardware.",
+    "output.none": "No SPC output (Mapping Gate) discovered.",
+    "output.name": "Output {id}",
+    "output.fallback_name": "SPC output",
+    "output.mapping_gate": "Mapping Gate",
+    "group.detectors": "Detectors",
+    "group.tampers": "Tampers",
+    "group.expand_all": "Expand all",
+    "group.collapse_all": "Collapse all",
+    "group.rest": "Idle",
+    "group.detector_count.one": "{count} detector",
+    "group.detector_count.other": "{count} detectors",
+    "group.area_count.one": "{count} area",
+    "group.area_count.other": "{count} areas",
+    "group.tamper_count.one": "{count} tamper",
+    "group.tamper_count.other": "{count} tampers",
+    "group.active_count.one": "{count} active",
+    "group.active_count.other": "{count} active",
+    "group.fault_count.one": "{count} fault",
+    "group.fault_count.other": "{count} faults",
+    "group.unavailable_count.one": "{count} unavailable",
+    "group.unavailable_count.other": "{count} unavailable",
+    "group.in_fault": "{count} in fault",
+    "group.no_area": "No area",
+    "group.no_detector": "No detector",
+    "system.health": "State and faults",
+    "system.connection": "FlexC connection",
+    "system.state_unknown": "State unavailable",
+    "system.entity_missing": "Entity not exposed",
+    "system.engineer_active": "Engineer mode active",
+    "system.engineer_detail": "The state is reported in real time by the panel.",
+    "system.active_faults": "Active faults",
+    "system.no_fault": "No active fault",
+    "system.faults_unknown": "System faults unavailable: metadata is not available.",
+    "system.card": "SPC FlexC Card",
+    "system.panel": "Panel",
+    "system.manufacturer": "Manufacturer",
+    "system.model": "Model",
+    "system.firmware": "Firmware",
+    "system.hardware": "Hardware",
+    "system.serial": "Serial number",
+    "system.power": "Power",
+    "system.ac_frequency": "AC frequency",
+    "system.battery_voltage": "Battery voltage",
+    "system.aux_voltage": "Auxiliary voltage",
+    "system.aux_current": "Auxiliary current",
+    "system.communication": "FlexC communication",
+    "system.state": "State",
+    "system.ats_used": "ATS used",
+    "system.last_tx": "Last successful transmission",
+    "system.xbus": "X-BUS",
+    "system.xbus_id": "X-BUS ID",
+    "system.sia_address": "SIA address",
+    "system.tamper": "Tamper",
+    "system.tamper_isolation": "Tamper isolation",
+    "system.rf": "RF",
+    "system.modem": "Modem",
+    "action.disarm": "Disarm",
+    "action.full_arm": "Full set",
+    "action.arm": "Arm",
+    "action.activate": "Activate",
+    "action.deactivate": "Deactivate",
+    "action.execute": "Run command",
+    "action.door_momentary": "Open momentarily",
+    "action.door_permanent": "Open permanently",
+    "action.door_normal": "Return to normal mode",
+    "action.door_lock": "Lock",
+    "confirm.generic": "Run the action on {name}?",
+    "confirm.disarm": "Disarm {name}?",
+    "confirm.full_arm": "Full set {name}?",
+    "confirm.part_set": "Activate {action} on {name}?",
+    "confirm.mapping_gate": "{action} — {name}?",
+    "confirm.door": "{action} — {name}?",
+    "editor.entity": "Alarm entity",
+    "editor.select_entity": "Select an entity",
+    "editor.name": "Card name",
+    "editor.show_controls": "Show alarm controls",
+    "editor.confirm_actions": "Confirm arm/disarm actions",
+    "editor.help": "Areas are read from the alarm entity. SPC detectors are discovered automatically from binary_sensor entities exposing zone_id, area_id and spc_zone_type. Diagnostics and technical information are associated with the same integration through the Home Assistant registries when available.",
+  },
+};
+
+function spcFlexCFormatTranslation(template, variables = {}) {
+  let result = String(template ?? "");
+
+  for (const [name, value] of Object.entries(variables)) {
+    result = result.split(`{${name}}`).join(String(value));
+  }
+
+  return result;
+}
+
+function spcFlexCLanguage(hass) {
+  const language = String(
+    hass?.locale?.language || navigator.language || "en"
+  ).toLowerCase();
+
+  return language.startsWith("fr") ? "fr" : "en";
+}
+
+function spcFlexCTranslate(hass, key, variables = {}, fallback = key) {
+  const language = spcFlexCLanguage(hass);
+  const template =
+    SPC_FLEXC_CARD_TRANSLATIONS[language]?.[key] ??
+    SPC_FLEXC_CARD_TRANSLATIONS.en[key] ??
+    fallback;
+
+  return spcFlexCFormatTranslation(template, variables);
+}
+
+const spcFlexCCardRegistration = window.customCards?.find(
+  (card) => card.type === "spc-flexc-card"
+);
+
+if (spcFlexCCardRegistration) {
+  spcFlexCCardRegistration.description = spcFlexCTranslate(
+    null,
+    "card.description"
+  );
+}
+
+/* SPC FlexC Card v1.0.5 render scheduler. */
 
 const spcFlexCImmediateRender = SpcFlexCCard.prototype._render;
 const spcFlexCBaseDisconnectedCallback =
@@ -4230,26 +4366,26 @@ SpcFlexCCard.prototype._showCardVersion = function () {
     return;
   }
 
-  const centralSection = Array.from(
-    this.querySelectorAll(".technical-section")
-  ).find(
-    (section) =>
-      section.querySelector(".technical-section-title")?.textContent.trim() ===
-      "Centrale"
-  );
+  const panelSection =
+    this.querySelector('[data-technical-section="panel"]') ||
+    Array.from(this.querySelectorAll(".technical-section")).find(
+      (section) =>
+        section.querySelector(".technical-section-title")?.textContent.trim() ===
+        this._t("system.panel")
+    );
 
-  if (!centralSection) {
+  if (!panelSection) {
     return;
   }
 
   const versionRow = document.createElement("div");
   versionRow.className = "technical-row spc-card-version";
   versionRow.innerHTML = `
-    <div class="technical-label">Carte SPC FlexC</div>
+    <div class="technical-label">${this._escapeHtml(this._t("system.card"))}</div>
     <div class="technical-value">${this._escapeHtml(CARD_VERSION)}</div>
   `;
 
-  centralSection
+  panelSection
     .querySelector(".technical-section-title")
     ?.insertAdjacentElement("afterend", versionRow);
 };
