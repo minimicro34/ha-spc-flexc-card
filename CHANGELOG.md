@@ -4,12 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.5] - 2026-09-12
+
+### Added
+
+- Added detector grouping by SPC area in the Detectors view.
+- Added per-area expand/collapse controls.
+- Added global **Expand all** / **Collapse all** controls.
+- Added compact area summaries showing detector count, tamper count, active zones, active tamper faults and unavailable zones.
+- Added persistent per-area expanded/collapsed state in browser local storage.
+- Added centralized French and English card translations in `src/spc-flexc-i18n.js`.
+- Added automatic language selection from Home Assistant `hass.locale.language`, with browser language as fallback.
+- Added localization coverage for the card UI, detector states, area grouping controls, diagnostics, editor labels and confirmation prompts.
+
+### Changed
+
+- Installations with more than 40 zones now start with detector groups collapsed by default to reduce visual and DOM load.
+- Small installations keep detector groups expanded by default for behaviour close to previous releases.
+- The build now includes the dedicated detector grouping and translation source modules.
+- Project checks now validate all card source modules, including grouping and localization.
+- Updated card source version markers, package metadata, build metadata and documentation for v1.0.5.
+
+### Notes
+
+- SPC FlexC Card is a custom Lovelace dashboard resource rather than a Home Assistant integration package. Home Assistant does not automatically load integration-style `strings.json` / `translations/*.json` files for dashboard cards, so translations are bundled in the card JavaScript source.
+- The browser-loaded card version remains available in **System → Panel / Centrale** to help detect stale frontend cache after HACS updates.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.4...v1.0.5
+
 ## [1.0.4] - 2026-09-12
 
 ### Added
 
 - Added the SPC FlexC Card version to the System view, making it easy to verify which frontend version is actually loaded by the browser.
-  
+
 ### Changed
 
 - Improved live zone rendering introduced in v1.0.3.
@@ -58,12 +86,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The **Doors** view is now primarily a supervision view and no longer presents FlexC door mode commands as guaranteed physical door or lock actuation.
 - Mapping Gates are presented as SPC logical outputs / logical interactions rather than as direct physical panel outputs.
 - The generated distribution now includes the dedicated `src/spc-flexc-outputs.js` source module during `npm run build`.
-- Project checks now validate both JavaScript source files and ensure the generated distribution is stamped with version `1.0.2`.
+- Project checks now validate both JavaScript source files and ensure the generated distribution carries the expected card version.
 
 ### Notes
 
 - In SPC terminology, the outputs shown by this card are **Mapping Gates**. They are logical outputs/interactions managed by the panel.
-- A Mapping Gate can be associated with a physical output or another programmed function in SPC, but this depends on the panel configuration. The card therefore does not assume that every Mapping Gate corresponds directly to an OP terminal.
+- A Mapping Gate can be associated with a physical output or another programmed function in SPC, but this depends on the panel configuration.
 - Mapping Gate control uses the native Home Assistant switch entities exposed by SPC FlexC.
 
 **Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.1...v1.0.2
