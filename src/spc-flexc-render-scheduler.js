@@ -1,4 +1,4 @@
-/* SPC FlexC Card v1.0.4 render scheduler. */
+/* SPC FlexC Card v1.0.5 render scheduler. */
 
 const spcFlexCImmediateRender = SpcFlexCCard.prototype._render;
 const spcFlexCBaseDisconnectedCallback =
