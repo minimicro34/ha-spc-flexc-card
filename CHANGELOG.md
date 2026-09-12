@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.4]
+
+### Changed
+
+- Improved live zone rendering introduced in v1.0.3.
+- Multiple SPC zone state changes occurring during the same browser frame are now coalesced into a single render.
+- Added a dedicated render scheduler using `requestAnimationFrame()`.
+- Added a fallback when `requestAnimationFrame()` is unavailable.
+- Pending scheduled renders are cancelled when the card is disconnected.
+- Moved render scheduling into its own source module to keep it separate from SPC Outputs-specific functionality.
+- Updated build and validation scripts for the additional source module.
+
+## [1.0.3]
+
+### Added
+
+- Added a dedicated Home Assistant `state_changed` subscription for live SPC zone updates.
+- Added a temporary live-state cache so zone changes can be displayed immediately without waiting for the normal Lovelace `hass.states` refresh.
+
+### Changed
+
+- Zone rendering now uses the latest live event state when it is newer than the state provided by Lovelace.
+- Live cached states are automatically reconciled and discarded once the normal Home Assistant state catches up.
+- Live zone subscription handling is implemented in the core card rather than in the SPC Outputs extension.
+- WebSocket subscriptions are cleaned up when the card is disconnected.
+
+### Fixed
+
+- Improved reliability of zone state updates when the card did not visually refresh despite Home Assistant already having received the new zone state.
+
 ## [1.0.2] - 2026-09-09
 
 ### Added
