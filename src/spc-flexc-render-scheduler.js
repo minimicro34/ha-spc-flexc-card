@@ -1,4 +1,4 @@
-/* SPC FlexC Card v1.0.4 render scheduler. */
+/* SPC FlexC Card v1.0.5 render scheduler. */
 
 const spcFlexCImmediateRender = SpcFlexCCard.prototype._render;
 const spcFlexCBaseDisconnectedCallback =
@@ -9,26 +9,26 @@ SpcFlexCCard.prototype._showCardVersion = function () {
     return;
   }
 
-  const centralSection = Array.from(
-    this.querySelectorAll(".technical-section")
-  ).find(
-    (section) =>
-      section.querySelector(".technical-section-title")?.textContent.trim() ===
-      "Centrale"
-  );
+  const panelSection =
+    this.querySelector('[data-technical-section="panel"]') ||
+    Array.from(this.querySelectorAll(".technical-section")).find(
+      (section) =>
+        section.querySelector(".technical-section-title")?.textContent.trim() ===
+        this._t("system.panel")
+    );
 
-  if (!centralSection) {
+  if (!panelSection) {
     return;
   }
 
   const versionRow = document.createElement("div");
   versionRow.className = "technical-row spc-card-version";
   versionRow.innerHTML = `
-    <div class="technical-label">Carte SPC FlexC</div>
+    <div class="technical-label">${this._escapeHtml(this._t("system.card"))}</div>
     <div class="technical-value">${this._escapeHtml(CARD_VERSION)}</div>
   `;
 
-  centralSection
+  panelSection
     .querySelector(".technical-section-title")
     ?.insertAdjacentElement("afterend", versionRow);
 };
