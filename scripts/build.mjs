@@ -1,9 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 
-const CARD_VERSION = "1.0.3";
+const CARD_VERSION = "1.0.4";
 const sources = await Promise.all([
   readFile("src/ha-spc-flexc-card.js", "utf8"),
   readFile("src/spc-flexc-outputs.js", "utf8"),
+  readFile("src/spc-flexc-render-scheduler.js", "utf8"),
 ]);
 
 const core = sources[0].replace(
@@ -13,7 +14,7 @@ const core = sources[0].replace(
 
 await writeFile(
   "ha-spc-flexc-card.js",
-  `${core.trimEnd()}\n\n${sources[1].trimStart()}`,
+  `${core.trimEnd()}\n\n${sources[1].trim()}\n\n${sources[2].trimStart()}`,
   "utf8"
 );
 
