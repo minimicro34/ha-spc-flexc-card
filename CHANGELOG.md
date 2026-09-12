@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added detector grouping by SPC area in the Detectors view.
 - Added per-area expand/collapse controls.
 - Added global **Expand all** / **Collapse all** controls.
-- Added compact area summaries showing detector count, tamper count, active zones, active tamper faults and unavailable zones.
+- Added compact area summaries showing detector count, tamper count, active zones, active tamper faults, inhibited zones and unavailable zones.
 - Added persistent per-area expanded/collapsed state in browser local storage.
 - Added centralized French and English card translations in `src/spc-flexc-i18n.js`.
 - Added automatic language selection from Home Assistant `hass.locale.language`, with browser language as fallback.
@@ -19,8 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Installations with more than 40 zones now start with detector groups collapsed by default to reduce visual and DOM load.
-- Small installations keep detector groups expanded by default for behaviour close to previous releases.
+- Detector groups now start collapsed by default on first display, regardless of installation size.
+- Per-area expand/collapse choices remain persisted in browser local storage after the initial display.
+- Inhibited zones are highlighted in their area summary, including while the area is collapsed.
 - The build now includes the dedicated detector grouping and translation source modules.
 - Project checks now validate all card source modules, including grouping and localization.
 - Updated card source version markers, package metadata, build metadata and documentation for v1.0.5.
