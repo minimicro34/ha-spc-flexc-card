@@ -1,4 +1,4 @@
-/* SPC FlexC Card v1.0.5 zone grouping extension. */
+/* SPC FlexC Card zone grouping extension. */
 
 const spcFlexCZoneGroupsBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCZoneGroupsBaseRender = SpcFlexCCard.prototype._render;
