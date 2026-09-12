@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.5] - 2026-09-12
+
+### Added
+
+- Grouped SPC zones by area in the **Detectors** view.
+- Added collapsible area headers with per-area detector, tamper and availability summaries.
+- Added **Tout développer** / **Tout réduire** controls for large installations.
+- Added persistent per-area expand/collapse state using browser local storage.
+- Added a dedicated `src/spc-flexc-zone-groups.js` source module for detector grouping.
+
+### Changed
+
+- Installations with 40 zones or fewer start with area groups expanded by default, while larger installations start collapsed.
+- Collapsed area groups do not render their individual zone rows, reducing DOM work on large SPC panels while keeping live summaries visible.
+- Updated all card source version markers and build metadata to `1.0.5`.
+- Updated the build and distribution checks to include the zone-grouping source module.
+- Updated project documentation for grouped detector rendering and the current source layout.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.4...v1.0.5
+
 ## [1.0.4] - 2026-09-12
 
 ### Added
