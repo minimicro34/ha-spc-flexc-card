@@ -4226,22 +4226,32 @@ const spcFlexCBaseDisconnectedCallback =
   SpcFlexCCard.prototype.disconnectedCallback;
 
 SpcFlexCCard.prototype._showCardVersion = function () {
-  const diagnosticsBlock = this.querySelector(".diagnostics-block");
+  if (this.querySelector(".spc-card-version")) {
+    return;
+  }
 
-  if (!diagnosticsBlock || diagnosticsBlock.querySelector(".spc-card-version")) {
+  const centralSection = Array.from(
+    this.querySelectorAll(".technical-section")
+  ).find(
+    (section) =>
+      section.querySelector(".technical-section-title")?.textContent.trim() ===
+      "Centrale"
+  );
+
+  if (!centralSection) {
     return;
   }
 
   const versionRow = document.createElement("div");
-  versionRow.className = "diagnostic-row spc-card-version";
+  versionRow.className = "technical-row spc-card-version";
   versionRow.innerHTML = `
-    <ha-icon class="muted" icon="mdi:card-account-details-outline"></ha-icon>
-    <div class="diagnostic-main">
-      <div class="diagnostic-name">SPC FlexC Card</div>
-      <div class="diagnostic-detail muted">Version ${CARD_VERSION}</div>
-    </div>
+    <div class="technical-label">Carte SPC FlexC</div>
+    <div class="technical-value">${this._escapeHtml(CARD_VERSION)}</div>
   `;
-  diagnosticsBlock.appendChild(versionRow);
+
+  centralSection
+    .querySelector(".technical-section-title")
+    ?.insertAdjacentElement("afterend", versionRow);
 };
 
 SpcFlexCCard.prototype._render = function () {
