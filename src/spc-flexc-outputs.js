@@ -112,7 +112,7 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
         <div class="zone-name">${this._escapeHtml(zone.name)}</div>
         <div class="zone-area">
           ${this._escapeHtml(this._areaName(zone.areaId))}
-          ${inhibited ? `<span class="zone-operating-badge warning">${this._t("zone.inhibited")}</span>` : ""}
+          ${inhibited ? `<span class="zone-operating-badge zone-inhibited">${this._t("zone.inhibited")}</span>` : ""}
         </div>
       </div>
 
