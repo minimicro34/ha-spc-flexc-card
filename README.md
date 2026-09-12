@@ -119,10 +119,29 @@ The SPC panel remains authoritative for arming availability and validation.
 
 ### Detectors
 
-The Detectors view displays SPC zones and separates normal detectors from
-tamper states.
+The Detectors view groups SPC zones by SPC area. Each area can be expanded or
+collapsed independently, which keeps large installations with many zones easy
+to navigate.
 
-The visual convention is:
+Each area header shows a compact summary including:
+
+- detector count;
+- tamper count when present;
+- active detector count;
+- active tamper/fault count;
+- unavailable zone count.
+
+The view also provides **Tout développer** and **Tout réduire** controls. The
+expand/collapse state of each area is stored in the browser and restored after
+rerenders and page reloads.
+
+Installations with 40 zones or fewer start with area groups expanded by default.
+Larger installations start collapsed to limit the number of zone rows rendered
+at once and reduce frontend work. Collapsed groups keep their live summary
+visible without rendering every individual zone row.
+
+Within an expanded area, normal detectors and tamper states remain visually
+separated. The visual convention is:
 
 - green — normal;
 - orange — normal activity such as movement or opening;
@@ -345,17 +364,20 @@ or diagnostic data.
 
 ## Development
 
-The main card source is maintained in:
+The card is currently built from these source modules:
 
 ```text
 src/ha-spc-flexc-card.js
-```
-
-Mapping Gate / Outputs support is maintained in:
-
-```text
 src/spc-flexc-outputs.js
+src/spc-flexc-zone-groups.js
+src/spc-flexc-render-scheduler.js
 ```
+
+The core card lives in `src/ha-spc-flexc-card.js`. Mapping Gate / Outputs,
+door-supervision and zone-inhibition extensions live in
+`src/spc-flexc-outputs.js`. Area-based detector grouping lives in
+`src/spc-flexc-zone-groups.js`, and render coalescing lives in
+`src/spc-flexc-render-scheduler.js`.
 
 Build the distributable file with:
 
@@ -376,7 +398,7 @@ npm run check
 git diff --check
 ```
 
-`npm run check` verifies both JavaScript source files and confirms that the
+`npm run check` validates every JavaScript source module and confirms that the
 generated distribution file is up to date and carries the expected card
 version.
 
