@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.0.4] - 2026-09-12
 
+### Added
+
+- Added the SPC FlexC Card version to the System view, making it easy to verify which frontend version is actually loaded by the browser.
+  
 ### Changed
 
 - Improved live zone rendering introduced in v1.0.3.
