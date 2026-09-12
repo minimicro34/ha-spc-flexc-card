@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 
-const CARD_VERSION = "1.0.3";
-const [coreSource, outputs, distribution] = await Promise.all([
+const CARD_VERSION = "1.0.4";
+const [coreSource, outputs, renderScheduler, distribution] = await Promise.all([
   readFile("src/ha-spc-flexc-card.js", "utf8"),
   readFile("src/spc-flexc-outputs.js", "utf8"),
+  readFile("src/spc-flexc-render-scheduler.js", "utf8"),
   readFile("ha-spc-flexc-card.js", "utf8"),
 ]);
 
@@ -11,7 +12,7 @@ const core = coreSource.replace(
   /^const CARD_VERSION = "[^"]+";/,
   `const CARD_VERSION = "${CARD_VERSION}";`
 );
-const source = `${core.trimEnd()}\n\n${outputs.trimStart()}`;
+const source = `${core.trimEnd()}\n\n${outputs.trim()}\n\n${renderScheduler.trimStart()}`;
 
 if (source !== distribution) {
   console.error(
