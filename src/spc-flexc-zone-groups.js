@@ -1,0 +1,319 @@
+/* SPC FlexC Card zone grouping extension. */
+
+const spcFlexCZoneGroupsBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCZoneGroupsBaseRender = SpcFlexCCard.prototype._render;
+
+SpcFlexCCard.prototype._zoneGroupsStorageKey = function () {
+  const entity = this._config?.entity;
+  return entity ? `spc-flexc-card:${entity}:zone-groups` : null;
+};
+
+SpcFlexCCard.prototype._loadZoneGroupStates = function () {
+  if (this._spcZoneGroupStates) return this._spcZoneGroupStates;
+
+  this._spcZoneGroupStates = {};
+  const key = this._zoneGroupsStorageKey();
+  if (!key) return this._spcZoneGroupStates;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        this._spcZoneGroupStates = parsed;
+      }
+    }
+  } catch {
+    // Keep in-memory state when persistent browser storage is unavailable.
+  }
+
+  return this._spcZoneGroupStates;
+};
+
+SpcFlexCCard.prototype._saveZoneGroupStates = function () {
+  const key = this._zoneGroupsStorageKey();
+  if (!key) return;
+
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify(this._spcZoneGroupStates || {})
+    );
+  } catch {
+    // Home Assistant can still keep the state until the card is recreated.
+  }
+};
+
+SpcFlexCCard.prototype._zoneGroupExpanded = function (areaId, totalZones) {
+  const states = this._loadZoneGroupStates();
+  const key = String(areaId);
+
+  if (Object.prototype.hasOwnProperty.call(states, key)) {
+    return states[key] === true;
+  }
+
+  // Keep small installations familiar while large panels start compact.
+  return totalZones <= 40;
+};
+
+SpcFlexCCard.prototype._setZoneGroupExpanded = function (areaId, expanded) {
+  const states = this._loadZoneGroupStates();
+  states[String(areaId)] = Boolean(expanded);
+  this._saveZoneGroupStates();
+};
+
+SpcFlexCCard.prototype._getZoneGroups = function () {
+  const zones = this._getZones();
+  const areas = this._getAreas();
+  const groups = new Map();
+
+  for (const area of areas) {
+    groups.set(String(area.id), {
+      id: String(area.id),
+      name: area.name,
+      numericId: area.numericId,
+      zones: [],
+    });
+  }
+
+  for (const zone of zones) {
+    const key = String(zone.areaId);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        name: this._areaName(zone.areaId),
+        numericId: Number(zone.areaId),
+        zones: [],
+      });
+    }
+    groups.get(key).zones.push(zone);
+  }
+
+  return Array.from(groups.values())
+    .filter((group) => group.zones.length > 0)
+    .sort((a, b) => {
+      if (Number.isFinite(a.numericId) && Number.isFinite(b.numericId)) {
+        return a.numericId - b.numericId;
+      }
+      return a.name.localeCompare(b.name);
+    });
+};
+
+SpcFlexCCard.prototype._renderZones = function () {
+  const groups = this._getZoneGroups();
+  const totalZones = groups.reduce((count, group) => count + group.zones.length, 0);
+
+  if (!totalZones) {
+    return `
+      <div class="empty-state">
+        <ha-icon icon="mdi:motion-sensor-off"></ha-icon>
+        <div>Aucune zone SPC découverte.</div>
+      </div>
+    `;
+  }
+
+  const allExpanded = groups.every((group) =>
+    this._zoneGroupExpanded(group.id, totalZones)
+  );
+
+  return `
+    <div class="zones-view grouped-zones-view">
+      <div class="zone-groups-toolbar">
+        <div class="group-title">
+          Détecteurs
+          <span>${totalZones}</span>
+        </div>
+        <button
+          type="button"
+          class="zone-groups-toggle-all"
+          data-zone-groups-action="${allExpanded ? "collapse" : "expand"}"
+        >
+          ${allExpanded ? "Tout réduire" : "Tout développer"}
+        </button>
+      </div>
+
+      <div class="zone-groups-list">
+        ${groups.map((group) => {
+          const expanded = this._zoneGroupExpanded(group.id, totalZones);
+          const normalZones = group.zones.filter(
+            (zone) => zone.zoneType !== "tamper" && zone.deviceClass !== "tamper"
+          );
+          const tampers = group.zones.filter(
+            (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
+          );
+          const activeZones = normalZones.filter((zone) => zone.state === "on").length;
+          const activeTampers = tampers.filter(
+            (zone) => zone.state === "on" || zone.eventTamper === true
+          ).length;
+          const unavailable = group.zones.filter(
+            (zone) => ["unknown", "unavailable"].includes(zone.state)
+          ).length;
+
+          return `
+            <section class="zone-group${expanded ? " expanded" : " collapsed"}">
+              <button
+                type="button"
+                class="zone-group-header"
+                data-zone-group-id="${this._escapeHtml(group.id)}"
+                aria-expanded="${expanded ? "true" : "false"}"
+              >
+                <ha-icon
+                  class="zone-group-chevron"
+                  icon="${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}"
+                ></ha-icon>
+
+                <div class="zone-group-title-wrap">
+                  <div class="zone-group-title">${this._escapeHtml(group.name)}</div>
+                  <div class="zone-group-meta">
+                    ${normalZones.length} détecteur${normalZones.length > 1 ? "s" : ""}
+                    ${tampers.length ? ` · ${tampers.length} autoprotection${tampers.length > 1 ? "s" : ""}` : ""}
+                  </div>
+                </div>
+
+                <div class="zone-group-summary">
+                  ${activeZones ? `<span class="warning">${activeZones} actif${activeZones > 1 ? "s" : ""}</span>` : ""}
+                  ${activeTampers ? `<span class="danger">${activeTampers} défaut${activeTampers > 1 ? "s" : ""}</span>` : ""}
+                  ${unavailable ? `<span class="muted">${unavailable} indisponible${unavailable > 1 ? "s" : ""}</span>` : ""}
+                  ${!activeZones && !activeTampers && !unavailable ? '<span class="ok">Au repos</span>' : ""}
+                </div>
+              </button>
+
+              ${expanded ? `
+                <div class="zone-group-content">
+                  ${normalZones.length ? `
+                    <div class="zone-list">
+                      ${normalZones.map((zone) => this._renderZoneRow(zone)).join("")}
+                    </div>
+                  ` : ""}
+
+                  ${tampers.length ? `
+                    <div class="group-title tamper-title">
+                      Autoprotections
+                      <span>${tampers.length}</span>
+                    </div>
+                    <div class="zone-list tamper-list">
+                      ${tampers.map((zone) => this._renderZoneRow(zone)).join("")}
+                    </div>
+                  ` : ""}
+                </div>
+              ` : ""}
+            </section>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+};
+
+SpcFlexCCard.prototype._styles = function () {
+  return `${spcFlexCZoneGroupsBaseStyles.call(this)}
+    <style>
+      .zone-groups-toolbar {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+      }
+      .zone-groups-toggle-all,
+      .zone-group-header {
+        appearance:none;
+        border:0;
+        font:inherit;
+        color:inherit;
+        cursor:pointer;
+      }
+      .zone-groups-toggle-all {
+        padding:6px 9px;
+        border-radius:8px;
+        background:var(--secondary-background-color,rgba(127,127,127,.08));
+        color:var(--primary-color);
+        font-size:12px;
+        font-weight:700;
+      }
+      .zone-groups-list { display:grid; gap:10px; }
+      .zone-group {
+        overflow:hidden;
+        border:1px solid var(--divider-color);
+        border-radius:12px;
+      }
+      .zone-group-header {
+        display:grid;
+        grid-template-columns:28px minmax(0,1fr) auto;
+        align-items:center;
+        gap:10px;
+        width:100%;
+        padding:12px;
+        background:var(--secondary-background-color,rgba(127,127,127,.06));
+        text-align:left;
+      }
+      .zone-group-header:hover {
+        background:var(--secondary-background-color,rgba(127,127,127,.1));
+      }
+      .zone-group-chevron { --mdc-icon-size:22px; color:var(--secondary-text-color); }
+      .zone-group-title-wrap { min-width:0; }
+      .zone-group-title {
+        overflow:hidden;
+        font-size:15px;
+        font-weight:700;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+      }
+      .zone-group-meta {
+        margin-top:2px;
+        color:var(--secondary-text-color);
+        font-size:11px;
+      }
+      .zone-group-summary {
+        display:flex;
+        justify-content:flex-end;
+        flex-wrap:wrap;
+        gap:4px 9px;
+        font-size:12px;
+        font-weight:700;
+        text-align:right;
+      }
+      .zone-group-content {
+        display:grid;
+        gap:8px;
+        padding:9px;
+      }
+      .zone-group-content .tamper-title { margin:8px 3px 0; }
+      @media (max-width:520px) {
+        .zone-group-header {
+          grid-template-columns:24px minmax(0,1fr);
+        }
+        .zone-group-summary {
+          grid-column:2;
+          justify-content:flex-start;
+          text-align:left;
+        }
+        .zone-groups-toolbar {
+          align-items:flex-start;
+        }
+      }
+    </style>`;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  spcFlexCZoneGroupsBaseRender.call(this);
+
+  this.querySelectorAll("[data-zone-group-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const areaId = button.dataset.zoneGroupId;
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      this._setZoneGroupExpanded(areaId, !expanded);
+      this._render();
+    });
+  });
+
+  this.querySelectorAll("[data-zone-groups-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const expand = button.dataset.zoneGroupsAction === "expand";
+      const groups = this._getZoneGroups();
+      for (const group of groups) {
+        this._setZoneGroupExpanded(group.id, expand);
+      }
+      this._render();
+    });
+  });
+};
