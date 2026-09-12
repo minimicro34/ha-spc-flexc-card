@@ -14,6 +14,8 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "state.part_a": "Partiel A",
     "state.part_b": "Partiel B",
     "state.alarm": "ALARME",
+    "state.arming": "Armement…",
+    "state.disarming": "Désarmement…",
     "state.pending": "Temporisation",
     "state.unavailable": "Indisponible",
     "state.unknown": "État inconnu",
@@ -40,6 +42,8 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "zone.inhibited": "INHIBÉ",
     "zone.none": "Aucune zone SPC découverte.",
     "area.none": "Aucun secteur SPC disponible.",
+    "area.last_set": "Dernier armement",
+    "area.last_unset": "Dernier désarmement",
     "door.none": "Aucune porte SPC découverte.",
     "output.none": "Aucune sortie SPC (Mapping Gate) découverte.",
     "group.detectors": "Détecteurs",
@@ -47,6 +51,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "group.expand_all": "Tout développer",
     "group.collapse_all": "Tout réduire",
     "group.rest": "Au repos",
+    "system.health": "État et défauts",
     "system.connection": "Connexion FlexC",
     "system.state_unknown": "État non déterminé",
     "system.entity_missing": "Entité non exposée",
@@ -84,6 +89,10 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "action.activate": "Activer",
     "action.deactivate": "Désactiver",
     "action.execute": "Exécuter la commande",
+    "action.door_momentary": "Ouverture momentanée",
+    "action.door_permanent": "Ouverture permanente",
+    "action.door_normal": "Retour au mode normal",
+    "action.door_lock": "Verrouiller",
     "door.status": "Status",
     "door.mode": "Mode",
     "door.dps": "DPS",
@@ -92,6 +101,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "door.free_access": "Accès libre",
     "door.unknown_area": "Association secteur inconnue",
     "door.supervision_note": "Supervision FlexC uniquement. Les commandes de mode de porte ne sont pas présentées comme une commande physique de serrure.",
+    "door.raw_note": "Status et Mode sont affichés tels que fournis par SPC tant que leur signification n’est pas validée sur matériel réel.",
     "output.mapping_gate": "Mapping Gate",
     "editor.entity": "Entité d'alarme",
     "editor.select_entity": "Sélectionner une entité",
@@ -113,6 +123,8 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "state.part_a": "Part Set A",
     "state.part_b": "Part Set B",
     "state.alarm": "ALARM",
+    "state.arming": "Arming…",
+    "state.disarming": "Disarming…",
     "state.pending": "Pending",
     "state.unavailable": "Unavailable",
     "state.unknown": "Unknown state",
@@ -139,6 +151,8 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "zone.inhibited": "INHIBITED",
     "zone.none": "No SPC zone discovered.",
     "area.none": "No SPC area available.",
+    "area.last_set": "Last arm",
+    "area.last_unset": "Last disarm",
     "door.none": "No SPC door discovered.",
     "output.none": "No SPC output (Mapping Gate) discovered.",
     "group.detectors": "Detectors",
@@ -146,6 +160,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "group.expand_all": "Expand all",
     "group.collapse_all": "Collapse all",
     "group.rest": "Idle",
+    "system.health": "State and faults",
     "system.connection": "FlexC connection",
     "system.state_unknown": "State unavailable",
     "system.entity_missing": "Entity not exposed",
@@ -183,6 +198,10 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "action.activate": "Activate",
     "action.deactivate": "Deactivate",
     "action.execute": "Run command",
+    "action.door_momentary": "Open momentarily",
+    "action.door_permanent": "Open permanently",
+    "action.door_normal": "Return to normal mode",
+    "action.door_lock": "Lock",
     "door.status": "Status",
     "door.mode": "Mode",
     "door.dps": "DPS",
@@ -191,6 +210,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "door.free_access": "Free access",
     "door.unknown_area": "Unknown area association",
     "door.supervision_note": "FlexC supervision only. Door mode commands are not presented as physical lock commands.",
+    "door.raw_note": "Status and Mode are displayed as provided by SPC until their meaning is validated on real hardware.",
     "output.mapping_gate": "Mapping Gate",
     "editor.entity": "Alarm entity",
     "editor.select_entity": "Select an entity",
@@ -233,32 +253,26 @@ SpcFlexCCard.prototype._translateCardText = function (value) {
     return source.replace(trimmed, this._t(directKey, trimmed));
   }
 
-  const rules = [
-    [/^(\d+) secteur$/, "$1 area"],
-    [/^(\d+) secteurs$/, "$1 areas"],
-    [/^(\d+) détecteur$/, "$1 detector"],
-    [/^(\d+) détecteurs$/, "$1 detectors"],
-    [/^(\d+) autoprotection$/, "$1 tamper"],
-    [/^(\d+) autoprotections$/, "$1 tampers"],
-    [/^(\d+) actif$/, "$1 active"],
-    [/^(\d+) actifs$/, "$1 active"],
-    [/^(\d+) défaut$/, "$1 fault"],
-    [/^(\d+) défauts$/, "$1 faults"],
-    [/^(\d+) indisponible$/, "$1 unavailable"],
-    [/^(\d+) indisponibles$/, "$1 unavailable"],
-    [/^(\d+) en défaut$/, "$1 in fault"],
-    [/^Aucun secteur$/, "No area"],
-    [/^Aucun détecteur$/, "No detector"],
-    [/^Zone (\d+)$/, "Zone $1"],
-  ];
-
-  let translated = trimmed;
-  for (const [pattern, replacement] of rules) {
-    if (pattern.test(translated)) {
-      translated = translated.replace(pattern, replacement);
-      break;
-    }
-  }
+  let translated = trimmed
+    .replace(/\b(\d+) secteurs\b/g, "$1 areas")
+    .replace(/\b(\d+) secteur\b/g, "$1 area")
+    .replace(/\b(\d+) détecteurs\b/g, "$1 detectors")
+    .replace(/\b(\d+) détecteur\b/g, "$1 detector")
+    .replace(/\b(\d+) autoprotections\b/g, "$1 tampers")
+    .replace(/\b(\d+) autoprotection\b/g, "$1 tamper")
+    .replace(/\b(\d+) actifs\b/g, "$1 active")
+    .replace(/\b(\d+) actif\b/g, "$1 active")
+    .replace(/\b(\d+) défauts\b/g, "$1 faults")
+    .replace(/\b(\d+) défaut\b/g, "$1 fault")
+    .replace(/\b(\d+) indisponibles\b/g, "$1 unavailable")
+    .replace(/\b(\d+) indisponible\b/g, "$1 unavailable")
+    .replace(/\b(\d+) en défaut\b/g, "$1 in fault")
+    .replace(/^Aucun secteur$/, "No area")
+    .replace(/^Aucun détecteur$/, "No detector")
+    .replace(/^Secteur (\d+)$/, "Area $1")
+    .replace(/^Porte (\d+)$/, "Door $1")
+    .replace(/^Sortie (\d+)$/, "Output $1")
+    .replace(/^Zone (\d+)$/, "Zone $1");
 
   return translated === trimmed ? source : source.replace(trimmed, translated);
 };
