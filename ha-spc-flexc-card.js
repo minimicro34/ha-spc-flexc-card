@@ -3781,6 +3781,7 @@ SpcFlexCCard.prototype._render = function () {
 
 const spcFlexCZoneGroupsBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCZoneGroupsBaseRender = SpcFlexCCard.prototype._render;
+const spcFlexCZoneGroupsBaseZoneStateInfo = SpcFlexCCard.prototype._zoneStateInfo;
 
 SpcFlexCCard.prototype._zoneGroupsStorageKey = function () {
   const entity = this._config?.entity;
@@ -3823,7 +3824,7 @@ SpcFlexCCard.prototype._saveZoneGroupStates = function () {
   }
 };
 
-SpcFlexCCard.prototype._zoneGroupExpanded = function (areaId, totalZones) {
+SpcFlexCCard.prototype._zoneGroupExpanded = function (areaId) {
   const states = this._loadZoneGroupStates();
   const key = String(areaId);
 
@@ -3831,14 +3832,29 @@ SpcFlexCCard.prototype._zoneGroupExpanded = function (areaId, totalZones) {
     return states[key] === true;
   }
 
-  // Keep small installations familiar while large panels start compact.
-  return totalZones <= 40;
+  // Start every group collapsed until the user explicitly opens it.
+  return false;
 };
 
 SpcFlexCCard.prototype._setZoneGroupExpanded = function (areaId, expanded) {
   const states = this._loadZoneGroupStates();
   states[String(areaId)] = Boolean(expanded);
   this._saveZoneGroupStates();
+};
+
+SpcFlexCCard.prototype._zoneIsInhibited = function (zone) {
+  return Number(zone?.status) === 2;
+};
+
+SpcFlexCCard.prototype._zoneStateInfo = function (zone) {
+  if (this._zoneIsInhibited(zone)) {
+    return {
+      label: this._t("zone.inhibited"),
+      className: "warning",
+    };
+  }
+
+  return spcFlexCZoneGroupsBaseZoneStateInfo.call(this, zone);
 };
 
 SpcFlexCCard.prototype._getZoneGroups = function () {
@@ -3892,7 +3908,7 @@ SpcFlexCCard.prototype._renderZones = function () {
   }
 
   const allExpanded = groups.every((group) =>
-    this._zoneGroupExpanded(group.id, totalZones)
+    this._zoneGroupExpanded(group.id)
   );
 
   return `
@@ -3913,14 +3929,19 @@ SpcFlexCCard.prototype._renderZones = function () {
 
       <div class="zone-groups-list">
         ${groups.map((group) => {
-          const expanded = this._zoneGroupExpanded(group.id, totalZones);
+          const expanded = this._zoneGroupExpanded(group.id);
           const normalZones = group.zones.filter(
             (zone) => zone.zoneType !== "tamper" && zone.deviceClass !== "tamper"
           );
           const tampers = group.zones.filter(
             (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
           );
-          const activeZones = normalZones.filter((zone) => zone.state === "on").length;
+          const inhibitedZones = normalZones.filter((zone) =>
+            this._zoneIsInhibited(zone)
+          ).length;
+          const activeZones = normalZones.filter(
+            (zone) => zone.state === "on" && !this._zoneIsInhibited(zone)
+          ).length;
           const activeTampers = tampers.filter(
             (zone) => zone.state === "on" || zone.eventTamper === true
           ).length;
@@ -3950,10 +3971,11 @@ SpcFlexCCard.prototype._renderZones = function () {
                 </div>
 
                 <div class="zone-group-summary">
+                  ${inhibitedZones ? `<span class="warning">${inhibitedZones} ${this._t("zone.inhibited")}</span>` : ""}
                   ${activeZones ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>` : ""}
                   ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
                   ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
-                  ${!activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
+                  ${!inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
                 </div>
               </button>
 
