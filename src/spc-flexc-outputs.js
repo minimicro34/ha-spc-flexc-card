@@ -1,4 +1,4 @@
-/* SPC FlexC Card v1.0.4 extensions: Mapping Gates, door supervision and zone inhibition. */
+/* SPC FlexC Card v1.0.5 extensions: Mapping Gates, door supervision and zone inhibition. */
 
 const spcFlexCBaseLoadActiveTab = SpcFlexCCard.prototype._loadActiveTab;
 const spcFlexCBaseGetZones = SpcFlexCCard.prototype._getZones;
@@ -50,7 +50,7 @@ SpcFlexCCard.prototype._getMappingGates = function () {
         name:
           attrs.mg_name ||
           attrs.friendly_name ||
-          (mgId != null ? `Sortie ${mgId}` : entityId),
+          (mgId != null ? this._t("output.name", { id: mgId }) : entityId),
         state: stateObj.state,
       };
     })
@@ -112,7 +112,7 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
         <div class="zone-name">${this._escapeHtml(zone.name)}</div>
         <div class="zone-area">
           ${this._escapeHtml(this._areaName(zone.areaId))}
-          ${inhibited ? '<span class="zone-operating-badge warning">INHIBÉ</span>' : ""}
+          ${inhibited ? `<span class="zone-operating-badge warning">${this._t("zone.inhibited")}</span>` : ""}
         </div>
       </div>
 
@@ -141,9 +141,9 @@ SpcFlexCCard.prototype._getDoors = function () {
 
 SpcFlexCCard.prototype._doorModeLabel = function (mode) {
   const value = Number(mode);
-  if (value === 0) return "Normal";
-  if (value === 1) return "Accès interdit";
-  if (value === 2) return "Accès libre";
+  if (value === 0) return this._t("state.normal");
+  if (value === 1) return this._t("door.access_forbidden");
+  if (value === 2) return this._t("door.free_access");
   return mode == null ? "—" : String(mode);
 };
 
@@ -153,7 +153,7 @@ SpcFlexCCard.prototype._renderDoors = function () {
     return `
       <div class="empty-state">
         <ha-icon icon="mdi:door-closed-lock"></ha-icon>
-        <div>Aucune porte SPC découverte.</div>
+        <div>${this._t("door.none")}</div>
       </div>
     `;
   }
@@ -171,30 +171,30 @@ SpcFlexCCard.prototype._renderDoors = function () {
           </div>
           <div class="door-state-grid door-supervision-grid">
             <div class="door-state-card">
-              <div class="door-state-label">Status</div>
+              <div class="door-state-label">${this._t("door.status")}</div>
               <div class="door-state-value">${this._escapeHtml(door.status ?? "—")}</div>
             </div>
             <div class="door-state-card">
-              <div class="door-state-label">Mode</div>
+              <div class="door-state-label">${this._t("door.mode")}</div>
               <div class="door-state-value">${this._escapeHtml(this._doorModeLabel(door.mode))}</div>
             </div>
             <div class="door-state-card">
-              <div class="door-state-label">DPS</div>
+              <div class="door-state-label">${this._t("door.dps")}</div>
               <div class="door-state-value">${this._escapeHtml(door.dpsInput ?? "—")}</div>
             </div>
             <div class="door-state-card">
-              <div class="door-state-label">DRS</div>
+              <div class="door-state-label">${this._t("door.drs")}</div>
               <div class="door-state-value">${this._escapeHtml(door.drsInput ?? "—")}</div>
             </div>
           </div>
           ${door.zoneName ? `
             <div class="door-zone">
               <ha-icon icon="mdi:shield-home-outline"></ha-icon>
-              <span>Zone ${this._escapeHtml(door.zoneId ?? "")}${door.zoneId != null ? " · " : ""}${this._escapeHtml(door.zoneName)}</span>
+              <span>${this._t("zone.name", { id: door.zoneId ?? "" })}${door.zoneId != null ? " · " : ""}${this._escapeHtml(door.zoneName)}</span>
             </div>
           ` : ""}
           <div class="door-raw-note">
-            Supervision FlexC uniquement. Les commandes de mode de porte ne sont pas présentées comme une commande physique de serrure.
+            ${this._t("door.supervision_note")}
           </div>
         </div>
       `).join("")}
@@ -208,14 +208,14 @@ SpcFlexCCard.prototype._renderOutputs = function () {
     return `
       <div class="empty-state">
         <ha-icon icon="mdi:electric-switch"></ha-icon>
-        <div>Aucune sortie SPC (Mapping Gate) découverte.</div>
+        <div>${this._t("output.none")}</div>
       </div>
     `;
   }
 
   return `
     <div class="outputs-view">
-      <div class="group-title">Sorties <span>${outputs.length}</span></div>
+      <div class="group-title">${this._t("tab.outputs")} <span>${outputs.length}</span></div>
       <div class="output-list">
         ${outputs.map((output) => {
           const isOn = output.state === "on";
@@ -227,7 +227,7 @@ SpcFlexCCard.prototype._renderOutputs = function () {
               </div>
               <div class="output-main">
                 <div class="output-name">${this._escapeHtml(output.name)}</div>
-                <div class="output-id">Mapping Gate ${this._escapeHtml(output.id ?? "—")}</div>
+                <div class="output-id">${this._t("output.mapping_gate")} ${this._escapeHtml(output.id ?? "—")}</div>
               </div>
               <div class="output-state ${unavailable ? "muted" : isOn ? "ok" : "muted"}">
                 ${unavailable ? this._escapeHtml(output.state) : isOn ? "ON" : "OFF"}
@@ -257,12 +257,12 @@ SpcFlexCCard.prototype._renderTabs = function () {
   if (this._activeTab === "outputs" && !hasOutputs) this._activeTab = "system";
 
   const tabs = [
-    ["system", "Général"],
-    ["areas", "Secteurs"],
-    ["zones", "Détecteurs"],
-    ...(hasDoors ? [["doors", "Portes"]] : []),
-    ...(hasOutputs ? [["outputs", "Sorties"]] : []),
-    ["technical", "Système"],
+    ["system", this._t("tab.general")],
+    ["areas", this._t("tab.areas")],
+    ["zones", this._t("tab.detectors")],
+    ...(hasDoors ? [["doors", this._t("tab.doors")]] : []),
+    ...(hasOutputs ? [["outputs", this._t("tab.outputs")]] : []),
+    ["technical", this._t("tab.system")],
   ];
 
   return `<div class="tabs">${tabs.map(([id, label]) => `
@@ -286,8 +286,9 @@ SpcFlexCCard.prototype._renderActiveView = function () {
 
 SpcFlexCCard.prototype._callMappingGate = async function (entityId, name, action) {
   if (!this._hass || !entityId || !["on", "off"].includes(action)) return;
-  const label = action === "on" ? "Activer" : "Désactiver";
-  if (this._config.confirm_actions && !window.confirm(`${label} — ${name} ?`)) return;
+  const actionLabel = action === "on" ? this._t("action.activate") : this._t("action.deactivate");
+  const prompt = this._t("confirm.mapping_gate", { action: actionLabel, name });
+  if (this._config.confirm_actions && !window.confirm(prompt)) return;
   await this._hass.callService("switch", action === "on" ? "turn_on" : "turn_off", {
     entity_id: entityId,
   });
@@ -360,7 +361,7 @@ SpcFlexCCard.prototype._render = function () {
     button.addEventListener("click", () => {
       this._callMappingGate(
         button.dataset.mgEntity,
-        button.dataset.mgName || "Sortie SPC",
+        button.dataset.mgName || this._t("output.fallback_name"),
         button.dataset.mgAction
       );
     });
