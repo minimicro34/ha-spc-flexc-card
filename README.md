@@ -41,11 +41,14 @@ technical SPC, FlexC and X-BUS information available in a separate System view.
 
 ![SPC FlexC Card - Detectors view](images/detectors.png)
 
+### Outputs
+
+![SPC FlexC Card - Detectors view](images/outputs.png)
+
 ### System
 
-![SPC FlexC Card - System view 1](images/system1.png)
+![SPC FlexC Card - System view](images/system.png)
 
-![SPC FlexC Card - System view 2](images/system2.png)
 
 The **Doors** view is displayed only when the SPC FlexC integration discovers at
 least one SPC access-control door. The **Outputs** view is displayed only when at
