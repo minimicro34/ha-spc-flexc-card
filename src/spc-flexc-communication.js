@@ -1,6 +1,7 @@
 /* SPC FlexC Card communication diagnostics. */
 
 const spcFlexCCommunicationBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCCommunicationBaseRender = SpcFlexCCard.prototype._render;
 
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCCommunicationBaseStyles.call(this)}
@@ -81,9 +82,10 @@ SpcFlexCCard.prototype._renderFlexcCommunication = function () {
                           const formattedTx = this._formatDateTime(
                             atp.lastTxOkTimestamp
                           );
+                          const atpKey = `${ats.id ?? "ungrouped"}:${atp.id ?? atp.displayId ?? "unknown"}`;
 
                           return `
-                            <details class="atp-card">
+                            <details class="atp-card" data-atp-key="${this._escapeHtml(atpKey)}">
                               <summary class="atp-title">
                                 <span class="atp-title-main">${this._escapeHtml(atpLabel)}</span>
                                 ${stateInfo
@@ -122,4 +124,24 @@ SpcFlexCCard.prototype._renderFlexcCommunication = function () {
       </div>
     </div>
   `;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  const openAtps = new Set(
+    Array.from(this.querySelectorAll("details.atp-card[open][data-atp-key]"))
+      .map((details) => details.dataset.atpKey)
+      .filter(Boolean)
+  );
+
+  spcFlexCCommunicationBaseRender.call(this);
+
+  if (!openAtps.size) {
+    return;
+  }
+
+  for (const details of this.querySelectorAll("details.atp-card[data-atp-key]")) {
+    if (openAtps.has(details.dataset.atpKey)) {
+      details.open = true;
+    }
+  }
 };
