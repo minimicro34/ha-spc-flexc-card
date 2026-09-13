@@ -1,4 +1,4 @@
-/* SPC FlexC Card v1.0.5 render scheduler. */
+/* SPC FlexC Card render scheduler. */
 
 const spcFlexCImmediateRender = SpcFlexCCard.prototype._render;
 const spcFlexCBaseDisconnectedCallback =
@@ -33,6 +33,61 @@ SpcFlexCCard.prototype._showCardVersion = function () {
     ?.insertAdjacentElement("afterend", versionRow);
 };
 
+SpcFlexCCard.prototype._captureScrollPositions = function () {
+  const positions = [];
+  const seen = new Set();
+  let node = this;
+
+  while (node) {
+    const parent = node.parentElement || node.getRootNode?.()?.host || null;
+    if (!parent || seen.has(parent)) {
+      break;
+    }
+
+    seen.add(parent);
+
+    if (
+      parent.scrollHeight > parent.clientHeight ||
+      parent.scrollWidth > parent.clientWidth
+    ) {
+      positions.push({
+        element: parent,
+        top: parent.scrollTop,
+        left: parent.scrollLeft,
+      });
+    }
+
+    node = parent;
+  }
+
+  const scrollingElement = document.scrollingElement;
+  if (scrollingElement && !seen.has(scrollingElement)) {
+    positions.push({
+      element: scrollingElement,
+      top: scrollingElement.scrollTop,
+      left: scrollingElement.scrollLeft,
+    });
+  }
+
+  return positions;
+};
+
+SpcFlexCCard.prototype._restoreScrollPositions = function (positions) {
+  for (const position of positions || []) {
+    const { element, top, left } = position;
+    if (!element?.isConnected) {
+      continue;
+    }
+
+    if (element.scrollTop !== top) {
+      element.scrollTop = top;
+    }
+    if (element.scrollLeft !== left) {
+      element.scrollLeft = left;
+    }
+  }
+};
+
 SpcFlexCCard.prototype._render = function () {
   if (this._spcRenderFrame != null) {
     return;
@@ -41,8 +96,16 @@ SpcFlexCCard.prototype._render = function () {
   const render = () => {
     this._spcRenderFrame = null;
     this._spcRenderUsesAnimationFrame = false;
+
+    const scrollPositions = this._captureScrollPositions();
     spcFlexCImmediateRender.call(this);
     this._showCardVersion();
+    this._restoreScrollPositions(scrollPositions);
+
+    this._spcScrollRestoreFrame = window.requestAnimationFrame?.(() => {
+      this._spcScrollRestoreFrame = null;
+      this._restoreScrollPositions(scrollPositions);
+    }) ?? null;
   };
 
   if (typeof window.requestAnimationFrame === "function") {
@@ -67,6 +130,14 @@ SpcFlexCCard.prototype.disconnectedCallback = function () {
 
     this._spcRenderFrame = null;
     this._spcRenderUsesAnimationFrame = false;
+  }
+
+  if (
+    this._spcScrollRestoreFrame != null &&
+    typeof window.cancelAnimationFrame === "function"
+  ) {
+    window.cancelAnimationFrame(this._spcScrollRestoreFrame);
+    this._spcScrollRestoreFrame = null;
   }
 
   spcFlexCBaseDisconnectedCallback.call(this);
