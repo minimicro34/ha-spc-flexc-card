@@ -14,14 +14,14 @@
 </p>
 
 <p align="center">
-  🔐 Alarm control • 🏠 Areas • 🚪 Detectors • 🚪 Access-control doors • 🔌 Mapping Gate outputs • 📡 FlexC • 🩺 Diagnostics
+  🔐 Alarm control • 🏠 Areas • 🚪 Detectors • 🚪 Access-control doors • 🔌 Mapping Gate outputs • 📡 FlexC • X-BUS • 🩺 Diagnostics
 </p>
 
 SPC FlexC Card is a custom Home Assistant dashboard card designed for the
 [SPC FlexC integration](https://github.com/minimicro34/ha-spc-flexc).
 
 It provides a dedicated interface for everyday alarm control while keeping
-technical SPC and FlexC information available in a separate system view.
+technical SPC, FlexC and X-BUS information available in a separate System view.
 
 > [!IMPORTANT]
 > This card can trigger alarm and Mapping Gate state-changing services.
@@ -70,59 +70,38 @@ The Areas view provides individual SPC area control and can display:
 
 - current arming state;
 - Arm or Disarm action according to the current state;
-- Part Set A when supported by the area;
-- Part Set B when supported by the area;
-- custom Part Set A / Part Set B names exposed by the integration;
+- Part Set A / Part Set B when supported;
+- custom Part Set names exposed by the integration;
 - last Set / Unset information;
 - localized date and time;
 - user name, with user ID as fallback.
+
+Starting with **v1.0.6**, area cards are collapsed by default and keep the area
+name and current arming state visible in the header. Each area can be expanded
+individually, and **Expand all** / **Collapse all** controls are available.
 
 The SPC panel remains authoritative for arming availability and validation.
 
 ### Detectors
 
-The Detectors view displays SPC zones using the states and attributes exposed by
-the SPC FlexC integration.
-
-Starting with **v1.0.5**, zones are grouped by SPC area. Each area can be
-expanded or collapsed independently, and the card provides global **Expand all**
-and **Collapse all** controls.
-
-For large installations, groups start collapsed by default when more than 40
-zones are present. The expanded/collapsed state is stored locally in the browser
-for the selected SPC alarm entity.
-
-Collapsed area headers still show useful information such as:
-
-- number of detectors;
-- number of tamper zones;
-- active detectors;
-- active tamper faults;
-- unavailable zones.
-
-This keeps installations with more than one hundred zones usable without
-rendering every detector row all the time.
+Zones are grouped by SPC area. Each group can be expanded or collapsed
+independently, with global **Expand all** and **Collapse all** controls.
+Collapsed headers keep useful information such as detector count, tamper count,
+active zones, inhibited zones and unavailable zones.
 
 The visual convention is:
 
 - green — normal;
-- orange — normal activity such as movement or opening;
+- orange — normal activity or inhibited state;
 - red — alarm, fault or tamper;
 - grey — unavailable or unknown.
 
 ### Doors
 
 The **Doors** tab is displayed automatically when at least one SPC
-access-control door is discovered.
-
-For each discovered door, the card can display:
-
-- SPC door name;
-- associated areas;
-- associated SPC zone;
-- raw SPC Status value;
-- interpreted SPC Mode value where validated;
-- DPS and DRS input values when exposed by the integration.
+access-control door is discovered. Depending on the integration data, the card
+can show the SPC door name, associated areas and zone, status, interpreted mode,
+and DPS / DRS inputs.
 
 Validated door mode values are:
 
@@ -130,71 +109,74 @@ Validated door mode values are:
 - `1` — Access forbidden;
 - `2` — Free access.
 
-The door view is intentionally treated primarily as a supervision view. A door
-mode reported by FlexC must not be interpreted as proof that a physical lock or
-relay has actuated.
+Door information is primarily supervision data. A FlexC mode must not be
+interpreted as proof that a physical lock or relay has actuated.
 
 ### Outputs / Mapping Gates
 
-The **Outputs** tab is displayed automatically when the SPC FlexC integration
-exposes at least one Mapping Gate.
+The **Outputs** tab is displayed automatically when the integration exposes at
+least one Mapping Gate. Mapping Gates are SPC logical outputs / interactions and
+are not necessarily identical to physical OP terminals.
 
-The word **Output** in this view refers to an SPC **Mapping Gate**. Mapping Gates
-are logical outputs / logical interactions managed by the SPC panel and are not
-necessarily identical to physical OP terminals.
-
-For each Mapping Gate, the card displays:
-
-- configured name;
-- Mapping Gate ID;
-- current ON/OFF state;
-- explicit ON and OFF controls.
-
-The controls use the native Home Assistant `switch.turn_on` and
-`switch.turn_off` services.
+For each Mapping Gate, the card displays its configured name, ID, current state
+and explicit ON/OFF controls using Home Assistant switch services.
 
 ### System
 
-The System view contains technical and diagnostic information such as:
+The System view can display:
 
-- card version loaded by the browser;
-- manufacturer;
-- model;
-- firmware and hardware information;
-- serial number;
+- loaded card version;
+- panel manufacturer, model, firmware, hardware and serial number;
 - panel power and battery information;
 - RF and modem diagnostics;
-- X-BUS devices and diagnostics;
-- FlexC ATS paths;
-- ATP paths associated with each ATS;
-- active FlexC path;
-- ATP fault state;
-- last successful transmission timestamp for each ATP.
+- FlexC ATS and ATP communication paths;
+- active path, ATP state and last successful transmission;
+- X-BUS devices and their diagnostics;
+- X-BUS voltage/current, hardware metadata and raw diagnostic values exposed by
+  the integration.
 
-The displayed card version is useful after HACS upgrades to verify that the
-browser is not still serving a cached JavaScript resource.
+Starting with **v1.0.6**, X-BUS and ATP cards are collapsible to keep large
+installations readable. X-BUS RF metadata is kept with its X-BUS device instead
+of being duplicated in the generic RF section.
+
+On wide displays, the System view is organized into three logical columns:
+
+1. panel, power, RF and modem;
+2. X-BUS;
+3. FlexC ATS / ATP communication.
+
+## Wide desktop layout
+
+SPC FlexC Card is responsive to the width that Home Assistant gives to the card.
+On a sufficiently wide card, Areas, Doors, Outputs and System diagnostics can use
+up to three columns. On narrow screens the same content automatically returns to
+a single-column layout.
+
+For the full three-column desktop layout in Home Assistant:
+
+1. use a dashboard view of type **Sections**;
+2. edit the section containing SPC FlexC Card;
+3. set the section **Width** to **3**.
+
+Home Assistant automatically reduces wide sections on smaller displays, so the
+same dashboard remains suitable for phones and tablets. No custom card CSS or
+manual width override is required.
 
 ## Localization
 
-SPC FlexC Card v1.0.5 includes centralized **French and English** translations.
-The card follows the Home Assistant frontend language through
-`hass.locale.language`, with the browser language used as a fallback.
+The card includes centralized French and English translations and follows Home
+Assistant's frontend language through `hass.locale.language`, with the browser
+language as fallback.
 
-A custom Lovelace dashboard card is not a Home Assistant integration package,
-so Home Assistant does not automatically load integration-style
-`strings.json` / `translations/*.json` files for it. To keep HACS/manual
-installation self-contained and reliable, the translations are bundled in the
-card JavaScript source instead.
+Translations are bundled directly in the card JavaScript source because custom
+Lovelace cards do not automatically load integration-style `strings.json` /
+`translations/*.json` files.
 
 Translations are maintained in:
 
 ```text
 src/spc-flexc-i18n.js
 ```
-
-This includes normal card labels, detector states, grouped-area controls such as
-**Expand all / Collapse all**, diagnostics, editor labels and confirmation
-prompts.
 
 ## Requirements
 
@@ -228,14 +210,8 @@ Then install **SPC FlexC Card** and reload the frontend if required.
 
 ### Manual installation
 
-Copy the built file:
-
-```text
-ha-spc-flexc-card.js
-```
-
-to a location served by Home Assistant and add it as a Lovelace JavaScript
-module resource.
+Copy the built file `ha-spc-flexc-card.js` to a location served by Home
+Assistant and add it as a Lovelace JavaScript module resource.
 
 ## Configuration
 
@@ -269,35 +245,22 @@ The card also provides a visual editor in Home Assistant.
 
 ## Alarm, Mapping Gate and access-control safety
 
-SPC FlexC Card keeps state-changing operations conservative.
-
-Alarm and Mapping Gate actions are sent through native Home Assistant services.
-The SPC panel remains authoritative for the resulting state and for any action
-rejected by its own configuration.
+SPC FlexC Card keeps state-changing operations conservative. Alarm and Mapping
+Gate actions are sent through native Home Assistant services, while the SPC
+panel remains authoritative for the resulting state and for rejected actions.
 
 Automatic retries of state-changing commands must not be implemented.
 
 Mapping Gates are logical panel objects. Before controlling one, verify in SPC
-what it is mapped to.
-
-Door mode changes must not be interpreted as proof that a physical door or lock
-has actuated.
+what it is mapped to. Door mode changes must not be interpreted as proof that a
+physical door or lock has actuated.
 
 ## Dynamic information
 
-The exact information displayed depends on:
-
-- SPC panel model;
-- SPC firmware;
-- installed SPC hardware;
-- configured ATS/ATP paths;
-- X-BUS devices;
-- installed access-control hardware;
-- configured Mapping Gates;
-- FlexC reporting and control permissions;
-- entities and attributes exposed by the installed SPC FlexC integration.
-
-Missing information is simply not displayed.
+The exact information displayed depends on the SPC panel model and firmware,
+installed SPC/X-BUS/access-control hardware, configured ATS/ATP paths and Mapping
+Gates, FlexC permissions, and the entities exposed by the installed SPC FlexC
+integration. Missing information is simply not displayed.
 
 ## Development
 
@@ -308,6 +271,10 @@ src/ha-spc-flexc-card.js
 src/spc-flexc-outputs.js
 src/spc-flexc-zone-groups.js
 src/spc-flexc-i18n.js
+src/spc-flexc-area-cards.js
+src/spc-flexc-communication.js
+src/spc-flexc-xbus.js
+src/spc-flexc-responsive.js
 src/spc-flexc-render-scheduler.js
 ```
 
@@ -317,7 +284,15 @@ Their responsibilities are:
 - `spc-flexc-outputs.js` — Mapping Gates, door supervision and zone inhibition;
 - `spc-flexc-zone-groups.js` — detector grouping by SPC area and collapse state;
 - `spc-flexc-i18n.js` — centralized French/English localization;
+- `spc-flexc-area-cards.js` — collapsible area cards and area-wide layout helpers;
+- `spc-flexc-communication.js` — collapsible FlexC ATP diagnostics;
+- `spc-flexc-xbus.js` — X-BUS discovery, grouping and collapsible diagnostics;
+- `spc-flexc-responsive.js` — container-responsive desktop/mobile layout;
 - `spc-flexc-render-scheduler.js` — coalesced rendering and loaded card version display.
+
+`package.json` is the authoritative release version. The build and distribution
+checks derive the card version from it and inject that version into the generated
+bundle.
 
 Build the distributable file with:
 
@@ -333,7 +308,8 @@ git diff --check
 ```
 
 `npm run check` validates every source module and confirms that the generated
-root `ha-spc-flexc-card.js` exactly matches the current sources and version.
+root `ha-spc-flexc-card.js` exactly matches the current sources and package
+version.
 
 Do not edit the generated root file directly. Edit files under `src/` and run
 `npm run build`.
@@ -343,15 +319,9 @@ Do not edit the generated root file directly. Edit files under `src/` and run
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 submitting changes.
 
-Useful contributions include:
-
-- bug fixes;
-- visual improvements;
-- additional SPC entities or diagnostics;
-- improved mobile and desktop layouts;
-- accessibility improvements;
-- additional translations;
-- documentation.
+Useful contributions include bug fixes, visual improvements, additional SPC
+entities or diagnostics, mobile/desktop layout improvements, accessibility,
+translations and documentation.
 
 > [!WARNING]
 > Never publish FlexC encryption keys, Command Profile passwords, SPC user
@@ -360,14 +330,12 @@ Useful contributions include:
 
 ## Disclaimer
 
-SPC FlexC Card is an independent open-source project.
-
-It is not affiliated with, endorsed by, or supported by Siemens, Vanderbilt,
-Comelit or Home Assistant.
+SPC FlexC Card is an independent open-source project. It is not affiliated with,
+endorsed by, or supported by Siemens, Vanderbilt, Comelit or Home Assistant.
 
 Alarm and access-control systems are security equipment. Always validate the
-behaviour of your specific panel, SPC FlexC integration and Home Assistant
-installation before relying on dashboard control.
+behaviour of your specific panel, integration and Home Assistant installation
+before relying on dashboard control.
 
 ## Support
 
@@ -376,20 +344,12 @@ you can buy me a coffee:
 
 https://buymeacoffee.com/minimicro34
 
-Please use GitHub Issues for bug reports and feature requests and include, when
-possible:
+For bug reports and feature requests, please use GitHub Issues and include when
+possible the SPC FlexC Card version, integration version, Home Assistant
+version, browser/device type, affected view, screenshots, console errors and
+relevant entity states or attributes.
 
-- SPC FlexC Card version;
-- SPC FlexC integration version;
-- Home Assistant version;
-- browser and device type;
-- affected card view;
-- screenshots when relevant;
-- browser console errors;
-- relevant Home Assistant entity states or attributes.
-
-Never include passwords, PINs, FlexC encryption keys or other alarm
-credentials.
+Never include passwords, PINs, FlexC encryption keys or other alarm credentials.
 
 ## Related project
 
