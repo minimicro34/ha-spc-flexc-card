@@ -2,6 +2,7 @@
 
 const spcFlexCXBusBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCXBusBaseTechnicalSystem = SpcFlexCCard.prototype._renderTechnicalSystem;
+const spcFlexCXBusBaseRender = SpcFlexCCard.prototype._render;
 
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCXBusBaseStyles.call(this)}
@@ -216,7 +217,7 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
               .join("");
 
             return `
-              <details class="xbus-card">
+              <details class="xbus-card" data-xbus-key="${this._escapeHtml(String(device.id))}">
                 <summary class="xbus-title">
                   <span class="xbus-title-main">${this._escapeHtml(title)}</span>
                   ${
@@ -283,4 +284,24 @@ SpcFlexCCard.prototype._renderTechnicalSystem = function () {
   }
 
   return documentNode.body.innerHTML;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  const openXBusDevices = new Set(
+    Array.from(this.querySelectorAll("details.xbus-card[open][data-xbus-key]"))
+      .map((details) => details.dataset.xbusKey)
+      .filter(Boolean)
+  );
+
+  spcFlexCXBusBaseRender.call(this);
+
+  if (!openXBusDevices.size) {
+    return;
+  }
+
+  for (const details of this.querySelectorAll("details.xbus-card[data-xbus-key]")) {
+    if (openXBusDevices.has(details.dataset.xbusKey)) {
+      details.open = true;
+    }
+  }
 };
