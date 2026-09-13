@@ -1,5 +1,53 @@
 /* SPC FlexC Card X-BUS diagnostics. */
 
+const spcFlexCXBusBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCXBusBaseTechnicalSystem = SpcFlexCCard.prototype._renderTechnicalSystem;
+
+SpcFlexCCard.prototype._styles = function () {
+  return `${spcFlexCXBusBaseStyles.call(this)}
+    <style>
+      .xbus-card {
+        overflow: hidden;
+      }
+
+      .xbus-card > summary {
+        list-style: none;
+      }
+
+      .xbus-card > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .xbus-title {
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .xbus-title-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .xbus-title-main::before {
+        content: "▸";
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1;
+        transition: transform 120ms ease;
+      }
+
+      .xbus-card[open] .xbus-title-main::before {
+        transform: rotate(90deg);
+      }
+
+      .xbus-card-body {
+        padding-top: 4px;
+      }
+    </style>`;
+};
+
 SpcFlexCCard.prototype._getXBusDevices = function () {
   const devices = new Map();
 
@@ -168,9 +216,9 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
               .join("");
 
             return `
-              <div class="xbus-card">
-                <div class="xbus-title">
-                  <span>${this._escapeHtml(title)}</span>
+              <details class="xbus-card">
+                <summary class="xbus-title">
+                  <span class="xbus-title-main">${this._escapeHtml(title)}</span>
                   ${
                     device.tamperFault === null
                       ? ""
@@ -178,16 +226,61 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
                           fault ? "state.fault" : "state.ok"
                         )}</span>`
                   }
+                </summary>
+                <div class="xbus-card-body">
+                  ${this._technicalLine(this._t("system.xbus_id"), device.id)}
+                  ${this._technicalLine(this._t("system.serial"), device.serialNumber)}
+                  ${this._technicalLine(this._t("system.firmware"), device.version)}
+                  ${rows}
                 </div>
-                ${this._technicalLine(this._t("system.xbus_id"), device.id)}
-                ${this._technicalLine(this._t("system.serial"), device.serialNumber)}
-                ${this._technicalLine(this._t("system.firmware"), device.version)}
-                ${rows}
-              </div>
+              </details>
             `;
           })
           .join("")}
       </div>
     </div>
   `;
+};
+
+SpcFlexCCard.prototype._renderTechnicalSystem = function () {
+  const html = spcFlexCXBusBaseTechnicalSystem.call(this);
+  const deviceNames = this._getXBusDevices()
+    .map((device) => String(device.name || "").trim())
+    .filter(Boolean);
+
+  if (!html || !deviceNames.length || typeof DOMParser === "undefined") {
+    return html;
+  }
+
+  const documentNode = new DOMParser().parseFromString(
+    `<body>${html}</body>`,
+    "text/html"
+  );
+
+  for (const section of documentNode.querySelectorAll(".technical-section")) {
+    const title = section
+      .querySelector(".technical-section-title")
+      ?.textContent?.trim();
+
+    if (title !== this._t("system.rf")) {
+      continue;
+    }
+
+    for (const row of section.querySelectorAll(".technical-row")) {
+      const label = row.querySelector(".technical-label")?.textContent?.trim() || "";
+      const belongsToXBus = deviceNames.some(
+        (deviceName) => label === deviceName || label.startsWith(`${deviceName} `)
+      );
+
+      if (belongsToXBus) {
+        row.remove();
+      }
+    }
+
+    if (!section.querySelector(".technical-row")) {
+      section.remove();
+    }
+  }
+
+  return documentNode.body.innerHTML;
 };
