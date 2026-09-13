@@ -1,6 +1,18 @@
 /* SPC FlexC Card container-responsive layout. */
 
 const spcFlexCResponsiveBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCResponsiveBaseGridOptions = SpcFlexCCard.prototype.getGridOptions;
+
+SpcFlexCCard.prototype.getGridOptions = function () {
+  const baseOptions = spcFlexCResponsiveBaseGridOptions
+    ? spcFlexCResponsiveBaseGridOptions.call(this)
+    : {};
+
+  return {
+    ...baseOptions,
+    columns: "full",
+  };
+};
 
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCResponsiveBaseStyles.call(this)}
@@ -35,7 +47,7 @@ SpcFlexCCard.prototype._styles = function () {
         min-width: 0;
       }
 
-      @container spc-flexc-card (min-width: 1050px) {
+      @container spc-flexc-card (min-width: 840px) {
         .area-list,
         .door-list,
         .output-list,
