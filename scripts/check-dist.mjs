@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
-const CARD_VERSION = "1.0.5";
+const packageMetadata = JSON.parse(await readFile("package.json", "utf8"));
+const CARD_VERSION = packageMetadata.version;
 const [
   coreSource,
   outputs,
