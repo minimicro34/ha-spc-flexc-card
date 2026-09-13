@@ -4725,6 +4725,7 @@ SpcFlexCCard.prototype._render = function () {
 /* SPC FlexC Card communication diagnostics. */
 
 const spcFlexCCommunicationBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCCommunicationBaseRender = SpcFlexCCard.prototype._render;
 
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCCommunicationBaseStyles.call(this)}
@@ -4805,9 +4806,10 @@ SpcFlexCCard.prototype._renderFlexcCommunication = function () {
                           const formattedTx = this._formatDateTime(
                             atp.lastTxOkTimestamp
                           );
+                          const atpKey = `${ats.id ?? "ungrouped"}:${atp.id ?? atp.displayId ?? "unknown"}`;
 
                           return `
-                            <details class="atp-card">
+                            <details class="atp-card" data-atp-key="${this._escapeHtml(atpKey)}">
                               <summary class="atp-title">
                                 <span class="atp-title-main">${this._escapeHtml(atpLabel)}</span>
                                 ${stateInfo
@@ -4848,10 +4850,31 @@ SpcFlexCCard.prototype._renderFlexcCommunication = function () {
   `;
 };
 
+SpcFlexCCard.prototype._render = function () {
+  const openAtps = new Set(
+    Array.from(this.querySelectorAll("details.atp-card[open][data-atp-key]"))
+      .map((details) => details.dataset.atpKey)
+      .filter(Boolean)
+  );
+
+  spcFlexCCommunicationBaseRender.call(this);
+
+  if (!openAtps.size) {
+    return;
+  }
+
+  for (const details of this.querySelectorAll("details.atp-card[data-atp-key]")) {
+    if (openAtps.has(details.dataset.atpKey)) {
+      details.open = true;
+    }
+  }
+};
+
 /* SPC FlexC Card X-BUS diagnostics. */
 
 const spcFlexCXBusBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCXBusBaseTechnicalSystem = SpcFlexCCard.prototype._renderTechnicalSystem;
+const spcFlexCXBusBaseRender = SpcFlexCCard.prototype._render;
 
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCXBusBaseStyles.call(this)}
@@ -5066,7 +5089,7 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
               .join("");
 
             return `
-              <details class="xbus-card">
+              <details class="xbus-card" data-xbus-key="${this._escapeHtml(String(device.id))}">
                 <summary class="xbus-title">
                   <span class="xbus-title-main">${this._escapeHtml(title)}</span>
                   ${
@@ -5133,6 +5156,26 @@ SpcFlexCCard.prototype._renderTechnicalSystem = function () {
   }
 
   return documentNode.body.innerHTML;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  const openXBusDevices = new Set(
+    Array.from(this.querySelectorAll("details.xbus-card[open][data-xbus-key]"))
+      .map((details) => details.dataset.xbusKey)
+      .filter(Boolean)
+  );
+
+  spcFlexCXBusBaseRender.call(this);
+
+  if (!openXBusDevices.size) {
+    return;
+  }
+
+  for (const details of this.querySelectorAll("details.xbus-card[data-xbus-key]")) {
+    if (openXBusDevices.has(details.dataset.xbusKey)) {
+      details.open = true;
+    }
+  }
 };
 
 /* SPC FlexC Card container-responsive layout. */
