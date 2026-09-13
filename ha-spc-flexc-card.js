@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.5";
+const CARD_VERSION = "1.0.6";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -4722,7 +4722,181 @@ SpcFlexCCard.prototype._render = function () {
   });
 };
 
+/* SPC FlexC Card communication diagnostics. */
+
+const spcFlexCCommunicationBaseStyles = SpcFlexCCard.prototype._styles;
+
+SpcFlexCCard.prototype._styles = function () {
+  return `${spcFlexCCommunicationBaseStyles.call(this)}
+    <style>
+      .atp-card {
+        overflow: hidden;
+      }
+
+      .atp-card > summary {
+        list-style: none;
+      }
+
+      .atp-card > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .atp-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .atp-title-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .atp-title-main::before {
+        content: "▸";
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1;
+        transition: transform 120ms ease;
+      }
+
+      .atp-card[open] .atp-title-main::before {
+        transform: rotate(90deg);
+      }
+
+      .atp-card-body {
+        padding-top: 4px;
+      }
+    </style>`;
+};
+
+SpcFlexCCard.prototype._renderFlexcCommunication = function () {
+  const atsList = this._getFlexcCommunication();
+  if (!atsList.length) return "";
+
+  return `
+    <div class="technical-section">
+      <div class="technical-section-title">${this._t("system.communication")}</div>
+      <div class="ats-list">
+        ${atsList
+          .map((ats) => {
+            const atsLabel = ats.ungrouped
+              ? ats.name
+              : `ATS ${ats.id ?? "?"}${
+                  ats.name ? ` — ${ats.name}` : ""
+                }`;
+
+            return `
+              <div class="ats-card">
+                <div class="ats-title">${this._escapeHtml(atsLabel)}</div>
+                ${ats.atps.length
+                  ? `<div class="atp-list">
+                      ${ats.atps
+                        .map((atp) => {
+                          const atpLabel = `ATP ${atp.displayId ?? "?"}${
+                            atp.name ? ` — ${atp.name}` : ""
+                          }`;
+                          const stateInfo = this._atpStateLabel(atp);
+                          const formattedTx = this._formatDateTime(
+                            atp.lastTxOkTimestamp
+                          );
+
+                          return `
+                            <details class="atp-card">
+                              <summary class="atp-title">
+                                <span class="atp-title-main">${this._escapeHtml(atpLabel)}</span>
+                                ${stateInfo
+                                  ? `<span class="${stateInfo.className}">${this._escapeHtml(stateInfo.label)}</span>`
+                                  : ""}
+                              </summary>
+                              <div class="atp-card-body">
+                                ${stateInfo
+                                  ? this._technicalLine(
+                                      this._t("system.state"),
+                                      stateInfo.label,
+                                      stateInfo.className
+                                    )
+                                  : ""}
+                                ${ats.ungrouped
+                                  ? ""
+                                  : this._technicalLine(
+                                      this._t("system.ats_used"),
+                                      atsLabel
+                                    )}
+                                ${this._technicalLine(
+                                  this._t("system.last_tx"),
+                                  formattedTx
+                                )}
+                              </div>
+                            </details>
+                          `;
+                        })
+                        .join("")}
+                    </div>`
+                  : ""}
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+};
+
 /* SPC FlexC Card X-BUS diagnostics. */
+
+const spcFlexCXBusBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCXBusBaseTechnicalSystem = SpcFlexCCard.prototype._renderTechnicalSystem;
+
+SpcFlexCCard.prototype._styles = function () {
+  return `${spcFlexCXBusBaseStyles.call(this)}
+    <style>
+      .xbus-card {
+        overflow: hidden;
+      }
+
+      .xbus-card > summary {
+        list-style: none;
+      }
+
+      .xbus-card > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .xbus-title {
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .xbus-title-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .xbus-title-main::before {
+        content: "▸";
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1;
+        transition: transform 120ms ease;
+      }
+
+      .xbus-card[open] .xbus-title-main::before {
+        transform: rotate(90deg);
+      }
+
+      .xbus-card-body {
+        padding-top: 4px;
+      }
+    </style>`;
+};
 
 SpcFlexCCard.prototype._getXBusDevices = function () {
   const devices = new Map();
@@ -4892,9 +5066,9 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
               .join("");
 
             return `
-              <div class="xbus-card">
-                <div class="xbus-title">
-                  <span>${this._escapeHtml(title)}</span>
+              <details class="xbus-card">
+                <summary class="xbus-title">
+                  <span class="xbus-title-main">${this._escapeHtml(title)}</span>
                   ${
                     device.tamperFault === null
                       ? ""
@@ -4902,12 +5076,14 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
                           fault ? "state.fault" : "state.ok"
                         )}</span>`
                   }
+                </summary>
+                <div class="xbus-card-body">
+                  ${this._technicalLine(this._t("system.xbus_id"), device.id)}
+                  ${this._technicalLine(this._t("system.serial"), device.serialNumber)}
+                  ${this._technicalLine(this._t("system.firmware"), device.version)}
+                  ${rows}
                 </div>
-                ${this._technicalLine(this._t("system.xbus_id"), device.id)}
-                ${this._technicalLine(this._t("system.serial"), device.serialNumber)}
-                ${this._technicalLine(this._t("system.firmware"), device.version)}
-                ${rows}
-              </div>
+              </details>
             `;
           })
           .join("")}
@@ -4916,10 +5092,54 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
   `;
 };
 
+SpcFlexCCard.prototype._renderTechnicalSystem = function () {
+  const html = spcFlexCXBusBaseTechnicalSystem.call(this);
+  const deviceNames = this._getXBusDevices()
+    .map((device) => String(device.name || "").trim())
+    .filter(Boolean);
+
+  if (!html || !deviceNames.length || typeof DOMParser === "undefined") {
+    return html;
+  }
+
+  const documentNode = new DOMParser().parseFromString(
+    `<body>${html}</body>`,
+    "text/html"
+  );
+
+  for (const section of documentNode.querySelectorAll(".technical-section")) {
+    const title = section
+      .querySelector(".technical-section-title")
+      ?.textContent?.trim();
+
+    if (title !== this._t("system.rf")) {
+      continue;
+    }
+
+    for (const row of section.querySelectorAll(".technical-row")) {
+      const label = row.querySelector(".technical-label")?.textContent?.trim() || "";
+      const belongsToXBus = deviceNames.some(
+        (deviceName) => label === deviceName || label.startsWith(`${deviceName} `)
+      );
+
+      if (belongsToXBus) {
+        row.remove();
+      }
+    }
+
+    if (!section.querySelector(".technical-row")) {
+      section.remove();
+    }
+  }
+
+  return documentNode.body.innerHTML;
+};
+
 /* SPC FlexC Card container-responsive layout. */
 
 const spcFlexCResponsiveBaseStyles = SpcFlexCCard.prototype._styles;
 const spcFlexCResponsiveBaseGridOptions = SpcFlexCCard.prototype.getGridOptions;
+const spcFlexCResponsiveBaseTechnicalSystem = SpcFlexCCard.prototype._renderTechnicalSystem;
 
 SpcFlexCCard.prototype.getGridOptions = function () {
   const baseOptions = spcFlexCResponsiveBaseGridOptions
@@ -4930,6 +5150,60 @@ SpcFlexCCard.prototype.getGridOptions = function () {
     ...baseOptions,
     columns: "full",
   };
+};
+
+SpcFlexCCard.prototype._renderTechnicalSystem = function () {
+  const html = spcFlexCResponsiveBaseTechnicalSystem.call(this);
+
+  if (!html || typeof DOMParser === "undefined") {
+    return html;
+  }
+
+  const documentNode = new DOMParser().parseFromString(
+    `<body>${html}</body>`,
+    "text/html"
+  );
+  const root = documentNode.querySelector(".technical-system-view");
+
+  if (!root) {
+    return html;
+  }
+
+  const columns = [[], [], []];
+  const communicationTitle = this._t("system.communication");
+  const xbusTitle = this._t("system.xbus");
+  const rfTitle = this._t("system.rf");
+  const modemTitle = this._t("system.modem");
+
+  for (const section of Array.from(root.children)) {
+    const title = section
+      .querySelector(".technical-section-title")
+      ?.textContent?.trim();
+
+    if (title === xbusTitle) {
+      columns[1].push(section.outerHTML);
+    } else if (title === communicationTitle) {
+      columns[2].push(section.outerHTML);
+    } else if (title === rfTitle || title === modemTitle) {
+      columns[0].push(section.outerHTML);
+    } else {
+      columns[0].push(section.outerHTML);
+    }
+  }
+
+  return `
+    <div class="technical-system-view technical-system-columns">
+      <div class="technical-system-column technical-system-column-main">
+        ${columns[0].join("")}
+      </div>
+      <div class="technical-system-column technical-system-column-xbus">
+        ${columns[1].join("")}
+      </div>
+      <div class="technical-system-column technical-system-column-communication">
+        ${columns[2].join("")}
+      </div>
+    </div>
+  `;
 };
 
 SpcFlexCCard.prototype._styles = function () {
@@ -4945,6 +5219,13 @@ SpcFlexCCard.prototype._styles = function () {
       .output-list,
       .technical-system-view {
         grid-template-columns: 1fr;
+      }
+
+      .technical-system-column {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+        min-width: 0;
       }
 
       .technical-row {
