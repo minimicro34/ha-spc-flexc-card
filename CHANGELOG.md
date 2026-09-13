@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.6] - 2026-09-13
+
+### Added
+
+- Added responsive wide-screen layouts for Areas, Doors, Outputs and the System view.
+- Added collapsible area cards, collapsed by default, while keeping the current arming state visible in the header.
+- Added **Expand all** / **Collapse all** controls for area cards.
+- Added X-BUS device discovery from integration entity unique IDs so newer X-BUS diagnostic entities are grouped with their device even when they do not expose `xbus_device_id` attributes.
+- Added detailed X-BUS diagnostics including electrical, hardware and raw protocol values exposed by the integration.
+- Added collapsible X-BUS device cards, collapsed by default while retaining the device name and tamper state in the header.
+- Added collapsible ATP cards in FlexC communication diagnostics, collapsed by default while retaining the ATP name and state in the header.
+
+### Changed
+
+- The card now requests the full available card width in Home Assistant Sections views and adapts its internal layout to the actual width it receives.
+- Wide System layouts are organized into three logical columns: panel/power/RF/modem, X-BUS, and FlexC ATS/ATP communication.
+- X-BUS RF fields are no longer duplicated in the generic RF section when they already belong to an X-BUS device.
+- Areas, Doors and Outputs use up to three columns on wide cards and fall back to a single column on narrow/mobile layouts.
+- The build and distribution validation now derive the card version from `package.json`, keeping release version metadata in a single authoritative location.
+- Build and validation scripts now include the dedicated responsive, area-card, X-BUS and FlexC communication source modules.
+
+### Notes
+
+- For the three-column desktop layout, use a Home Assistant **Sections** dashboard and set the section containing SPC FlexC Card to **Width 3**. Home Assistant automatically reduces the section width on smaller displays, while the card switches back to its single-column layout.
+- The browser-loaded card version remains available in **System → Panel / Centrale** to help detect stale frontend cache after HACS updates.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.5...v1.0.6
+
 ## [1.0.5] - 2026-09-12
 
 ### Added
