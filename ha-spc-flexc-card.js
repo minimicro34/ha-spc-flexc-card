@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.6";
+const CARD_VERSION = "1.0.7";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -3770,6 +3770,90 @@ SpcFlexCCard.prototype._render = function () {
       );
     });
   });
+};
+
+/* SPC FlexC Card zone isolation extension. */
+
+const spcFlexCZoneIsolationBaseGetZones = SpcFlexCCard.prototype._getZones;
+const spcFlexCZoneIsolationBaseRenderZoneRow = SpcFlexCCard.prototype._renderZoneRow;
+const spcFlexCZoneIsolationBaseStyles = SpcFlexCCard.prototype._styles;
+
+SpcFlexCCard.prototype._getZones = function () {
+  const zones = spcFlexCZoneIsolationBaseGetZones.call(this);
+  if (!this._hass || !zones.length) return zones;
+
+  const byId = new Map(zones.map((zone) => [String(zone.zoneId), zone]));
+  const scoped = this._scopedStates(true);
+  const candidates = scoped.length
+    ? scoped
+    : Object.entries(this._hass.states).map(([entityId, stateObj]) => ({
+        entityId,
+        stateObj,
+        registryEntry: null,
+      }));
+
+  for (const { entityId, stateObj, registryEntry } of candidates) {
+    if (!entityId.startsWith("switch.")) continue;
+
+    const attrs = stateObj?.attributes || {};
+    const uniqueId = String(registryEntry?.unique_id || "");
+    const match = uniqueId.match(/_zone_(\d+)_isolation$/);
+    if (!match) continue;
+
+    const zoneId = attrs.zone_id ?? match[1];
+    const zone = byId.get(String(zoneId));
+    if (!zone) continue;
+
+    zone.isolated = stateObj.state === "on";
+    zone.isolationEntityId = entityId;
+  }
+
+  return zones;
+};
+
+SpcFlexCCard.prototype._zoneIsIsolated = function (zone) {
+  return zone?.isolated === true;
+};
+
+SpcFlexCCard.prototype._renderZoneRow = function (zone) {
+  if (!this._zoneIsIsolated(zone)) {
+    return spcFlexCZoneIsolationBaseRenderZoneRow.call(this, zone);
+  }
+
+  return `
+    <div class="zone-row zone-row-isolated">
+      <div class="zone-icon danger">
+        <ha-icon icon="${this._escapeHtml(this._zoneIcon(zone))}"></ha-icon>
+      </div>
+
+      <div class="zone-main">
+        <div class="zone-name">${this._escapeHtml(zone.name)}</div>
+        <div class="zone-area">
+          ${this._escapeHtml(this._areaName(zone.areaId))}
+          <span class="zone-operating-badge zone-isolated">${this._t("state.isolated")}</span>
+        </div>
+      </div>
+
+      <div class="zone-state danger">
+        ${this._escapeHtml(this._t("state.isolated"))}
+      </div>
+    </div>
+  `;
+};
+
+SpcFlexCCard.prototype._styles = function () {
+  return `${spcFlexCZoneIsolationBaseStyles.call(this)}
+    <style>
+      .zone-row-isolated {
+        box-shadow:inset 3px 0 0 var(--error-color,#db4437);
+        background:color-mix(in srgb,var(--error-color,#db4437) 9%,transparent);
+      }
+      .zone-row-isolated .zone-name,
+      .zone-row-isolated .zone-area,
+      .zone-isolated {
+        color:var(--error-color,#db4437);
+      }
+    </style>`;
 };
 
 /* SPC FlexC Card v1.0.5 zone grouping extension. */
