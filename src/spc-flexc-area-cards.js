@@ -95,14 +95,28 @@ SpcFlexCCard.prototype._renderAreas = function () {
                 zone.deviceClass === "tamper"
             );
 
+            const isolatedZones = normalZones.filter(
+              (zone) => this._zoneIsIsolated?.(zone) === true
+            ).length;
+
+            const inhibitedZones = normalZones.filter(
+              (zone) =>
+                zone.inhibited === true &&
+                this._zoneIsIsolated?.(zone) !== true
+            ).length;
+
             const activeZones = normalZones.filter(
-              (zone) => zone.state === "on"
+              (zone) =>
+                zone.state === "on" &&
+                zone.inhibited !== true &&
+                this._zoneIsIsolated?.(zone) !== true
             ).length;
 
             const activeTampers = tampers.filter(
               (zone) =>
-                zone.state === "on" ||
-                zone.eventTamper === true
+                zone.inhibited !== true &&
+                this._zoneIsIsolated?.(zone) !== true &&
+                (zone.state === "on" || zone.eventTamper === true)
             ).length;
 
             const areaEntity = this._getAreaAlarmEntity(area.id);
@@ -162,10 +176,14 @@ SpcFlexCCard.prototype._renderAreas = function () {
 
                         <div class="area-meta">
                           <span>${this._tCount("group.detector_count", normalZones.length)}</span>
+                          ${isolatedZones ? `<span class="danger">${isolatedZones} ${this._t("state.isolated")}</span>` : ""}
+                          ${inhibitedZones ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", inhibitedZones)}</span>` : ""}
                           ${
                             activeZones
                               ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>`
-                              : `<span class="ok">${this._t("group.rest")}</span>`
+                              : !isolatedZones && !inhibitedZones
+                                ? `<span class="ok">${this._t("group.rest")}</span>`
+                                : ""
                           }
                           ${
                             activeTampers
