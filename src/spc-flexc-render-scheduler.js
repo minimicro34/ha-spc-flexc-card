@@ -89,6 +89,10 @@ SpcFlexCCard.prototype._restoreScrollPositions = function (positions) {
 };
 
 SpcFlexCCard.prototype._render = function () {
+  // Home Assistant can deliver the same zone change twice to the card: first
+  // through the direct state_changed subscription and then through the hass
+  // property update. Keep the immediate live update, but briefly coalesce the
+  // follow-up render so the whole card is not rebuilt twice in quick succession.
   if (this._spcRenderFrame != null) {
     return;
   }
@@ -106,9 +110,19 @@ SpcFlexCCard.prototype._render = function () {
       this._spcScrollRestoreFrame = null;
       this._restoreScrollPositions(scrollPositions);
     }) ?? null;
+
+    // One HA hass update generally follows the live event almost immediately.
+    // A short quiet period collapses that duplicate while staying well below a
+    // perceptible UI delay for unrelated state changes.
+    this._spcRenderQuietUntil = Date.now() + 40;
   };
 
-  if (typeof window.requestAnimationFrame === "function") {
+  const delay = Math.max(0, (this._spcRenderQuietUntil || 0) - Date.now());
+
+  if (delay > 0) {
+    this._spcRenderUsesAnimationFrame = false;
+    this._spcRenderFrame = window.setTimeout(render, delay);
+  } else if (typeof window.requestAnimationFrame === "function") {
     this._spcRenderUsesAnimationFrame = true;
     this._spcRenderFrame = window.requestAnimationFrame(render);
   } else {
@@ -140,5 +154,6 @@ SpcFlexCCard.prototype.disconnectedCallback = function () {
     this._spcScrollRestoreFrame = null;
   }
 
+  this._spcRenderQuietUntil = 0;
   spcFlexCBaseDisconnectedCallback.call(this);
 };
