@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.7] - 2026-09-17
+
+### Added
+
+- Added dedicated SPC zone isolation state discovery from the Home Assistant isolation switch entities introduced by SPC FlexC v1.1.0.
+- Added a distinct isolated-zone visual state and **Isolated / Isolé** badge.
+- Added a dedicated `src/spc-flexc-zone-isolation.js` source module.
+
+### Changed
+
+- Zone isolation is derived from the dedicated integration entity rather than inferred from a raw SPC `STATUS` value.
+- Isolated zones are visually distinct from inhibited zones and use the alarm/fault red visual convention.
+- Build and validation scripts now include the zone isolation source module.
+
+### Notes
+
+- SPC zone inhibition and isolation remain separate states. The SPC panel and SPC FlexC integration remain authoritative for the operations currently allowed on each zone.
+- v1.0.7 is intended for validation with SPC FlexC integration v1.1.0 before the final card release.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.6...v1.0.7
+
 ## [1.0.6] - 2026-09-13
 
 ### Added
