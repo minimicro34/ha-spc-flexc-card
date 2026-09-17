@@ -5126,50 +5126,52 @@ const spcFlexCXBusBaseRender = SpcFlexCCard.prototype._render;
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCXBusBaseStyles.call(this)}
     <style>
-      .xbus-card {
-        overflow: hidden;
-      }
-
-      .xbus-card > summary {
-        list-style: none;
-      }
-
-      .xbus-card > summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .xbus-title {
-        cursor: pointer;
-        user-select: none;
-      }
-
-      .xbus-title-main {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 0;
-      }
-
-      .xbus-title-main::before {
-        content: "▸";
-        color: var(--secondary-text-color);
-        font-size: 12px;
-        line-height: 1;
-        transition: transform 120ms ease;
-      }
-
-      .xbus-card[open] .xbus-title-main::before {
-        transform: rotate(90deg);
-      }
-
-      .xbus-card-body {
-        padding-top: 4px;
-      }
+      .xbus-card { overflow:hidden; }
+      .xbus-card > summary { list-style:none; }
+      .xbus-card > summary::-webkit-details-marker { display:none; }
+      .xbus-title { cursor:pointer; user-select:none; }
+      .xbus-title-main { display:flex; align-items:center; gap:8px; min-width:0; }
+      .xbus-title-main::before { content:"▸"; color:var(--secondary-text-color); font-size:12px; line-height:1; transition:transform 120ms ease; }
+      .xbus-card[open] .xbus-title-main::before { transform:rotate(90deg); }
+      .xbus-title-text { display:flex; flex-direction:column; min-width:0; }
+      .xbus-title-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .xbus-title-model { color:var(--secondary-text-color); font-size:11px; font-weight:500; line-height:1.25; }
+      .xbus-card-body { padding-top:4px; }
     </style>`;
+};
+
+SpcFlexCCard.prototype._xBusDeviceRegistryMap = function () {
+  const scope = this._diagnosticScope;
+  const devices = scope?.devices;
+  if (!(devices instanceof Map)) return new Map();
+  return devices;
+};
+
+SpcFlexCCard.prototype._xBusModelLabel = function (model) {
+  const value = String(model || "").trim();
+  if (!value) return null;
+
+  const language = String(this._hass?.locale?.language || navigator.language || "en")
+    .toLowerCase();
+  if (!language.startsWith("fr")) return value;
+
+  return {
+    "SPC Keypad": "Clavier SPC",
+    "SPC Comfort Keypad": "Clavier confort SPC",
+    SPCE650: "Transpondeur E/S SPCE650",
+    SPCE450: "Transpondeur de sorties SPCE450",
+    SPCA210: "Transpondeur de porte SPCA210",
+  }[value] || value;
 };
 
 SpcFlexCCard.prototype._getXBusDevices = function () {
   const devices = new Map();
+  const registryDevices = Array.isArray(this._diagnosticScope?.devices)
+    ? this._diagnosticScope.devices
+    : [];
+  const registryDeviceMap = new Map(
+    registryDevices.map((device) => [device.id, device])
+  );
 
   const ensureDevice = (deviceId) => {
     const key = String(deviceId);
@@ -5177,6 +5179,7 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
       devices.set(key, {
         id: deviceId,
         name: null,
+        model: null,
         serialNumber: null,
         version: null,
         siaAddress: null,
@@ -5194,28 +5197,20 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
     const match = uniqueId.match(/_xbus_(\d+)_(.+)$/);
     const deviceId = attrs.xbus_device_id ?? match?.[1] ?? null;
 
-    if (deviceId === null || deviceId === undefined) {
-      continue;
-    }
+    if (deviceId === null || deviceId === undefined) continue;
 
     const device = ensureDevice(deviceId);
     const field = match?.[2] || null;
+    const registryDevice = registryDeviceMap.get(registryEntry?.device_id);
 
-    device.name =
-      attrs.xbus_device_name ||
-      attrs.name ||
-      device.name;
-    device.serialNumber = attrs.serial_number ?? device.serialNumber;
-    device.version = attrs.version ?? device.version;
+    device.name = attrs.xbus_device_name || attrs.name || device.name;
+    device.model = registryDevice?.model || attrs.model || device.model;
+    device.serialNumber = attrs.serial_number ?? registryDevice?.serial_number ?? device.serialNumber;
+    device.version = attrs.version ?? registryDevice?.sw_version ?? device.version;
     device.siaAddress = attrs.sia_address ?? device.siaAddress;
 
-    if (attrs.tamper_fault !== undefined && attrs.tamper_fault !== null) {
-      device.tamperFault = attrs.tamper_fault === true;
-    }
-    if (attrs.tamper_isolated !== undefined && attrs.tamper_isolated !== null) {
-      device.tamperIsolated = attrs.tamper_isolated === true;
-    }
-
+    if (attrs.tamper_fault !== undefined && attrs.tamper_fault !== null) device.tamperFault = attrs.tamper_fault === true;
+    if (attrs.tamper_isolated !== undefined && attrs.tamper_isolated !== null) device.tamperIsolated = attrs.tamper_isolated === true;
     if (field === "tamper_fault") {
       if (stateObj.state === "on") device.tamperFault = true;
       if (stateObj.state === "off") device.tamperFault = false;
@@ -5225,203 +5220,80 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
       if (stateObj.state === "off") device.tamperIsolated = false;
     }
 
-    device.entities.push({
-      entityId,
-      stateObj,
-      field,
-    });
+    device.entities.push({ entityId, stateObj, field });
   }
 
-  return Array.from(devices.values()).sort(
-    (a, b) => Number(a.id) - Number(b.id)
-  );
+  return Array.from(devices.values()).sort((a, b) => Number(a.id) - Number(b.id));
 };
 
 SpcFlexCCard.prototype._xBusEntityValue = function (entity) {
   const { field, stateObj } = entity;
-
   if (field === "tamper_fault") {
-    if (stateObj.state === "on") {
-      return { value: this._t("state.fault"), className: "danger" };
-    }
-    if (stateObj.state === "off") {
-      return { value: this._t("state.ok"), className: "ok" };
-    }
+    if (stateObj.state === "on") return { value:this._t("state.fault"), className:"danger" };
+    if (stateObj.state === "off") return { value:this._t("state.ok"), className:"ok" };
   }
-
   if (field === "tamper_isolated") {
-    if (stateObj.state === "on") {
-      return { value: this._t("state.isolated"), className: "warning" };
-    }
-    if (stateObj.state === "off") {
-      return { value: this._t("state.not_isolated"), className: "ok" };
-    }
+    if (stateObj.state === "on") return { value:this._t("state.isolated"), className:"warning" };
+    if (stateObj.state === "off") return { value:this._t("state.not_isolated"), className:"ok" };
   }
-
-  return {
-    value: this._valueWithUnit(stateObj),
-    className: "",
-  };
+  return { value:this._valueWithUnit(stateObj), className:"" };
 };
 
 SpcFlexCCard.prototype._xBusEntityLabel = function (device, entity) {
-  const friendlyName = String(
-    entity.stateObj?.attributes?.friendly_name || entity.entityId
-  ).trim();
-
-  if (!device.name) {
-    return friendlyName;
-  }
-
+  const friendlyName = String(entity.stateObj?.attributes?.friendly_name || entity.entityId).trim();
+  if (!device.name) return friendlyName;
   const prefix = `${device.name} `;
-  return friendlyName.startsWith(prefix)
-    ? friendlyName.slice(prefix.length)
-    : friendlyName;
+  return friendlyName.startsWith(prefix) ? friendlyName.slice(prefix.length) : friendlyName;
 };
 
 SpcFlexCCard.prototype._renderXBusDevices = function () {
   const devices = this._getXBusDevices();
   if (!devices.length) return "";
-
-  const fieldOrder = [
-    "tamper_fault",
-    "tamper_isolated",
-    "aux_voltage",
-    "aux_current",
-    "device_type",
-    "hardware_id",
-    "input_count",
-    "output_count",
-    "rf_type",
-    "rf_version",
-    "reader_type",
-    "position_1",
-    "position_2",
-    "psu_type",
-    "sia_address",
-    "status_raw",
-    "input_raw",
-    "alert_raw",
-    "inhibit_raw",
-    "isolate_raw",
-  ];
-
+  const fieldOrder = ["tamper_fault","tamper_isolated","aux_voltage","aux_current","device_type","hardware_id","input_count","output_count","rf_type","rf_version","reader_type","position_1","position_2","psu_type","sia_address","status_raw","input_raw","alert_raw","inhibit_raw","isolate_raw"];
   const order = new Map(fieldOrder.map((field, index) => [field, index]));
 
-  return `
-    <div class="technical-section xbus-section">
-      <div class="technical-section-title">${this._t("system.xbus")}</div>
-      <div class="xbus-list">
-        ${devices
-          .map((device) => {
-            const title = device.name || `X-BUS ${device.id}`;
-            const fault = device.tamperFault === true;
+  return `<div class="technical-section xbus-section"><div class="technical-section-title">${this._t("system.xbus")}</div><div class="xbus-list">${devices.map((device) => {
+    const title = device.name || `X-BUS ${device.id}`;
+    const model = this._xBusModelLabel(device.model);
+    const fault = device.tamperFault === true;
+    const rows = device.entities.filter((entity) => entity.field && entity.field !== "diagnostics").sort((a,b) => {
+      const aOrder=order.get(a.field) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder=order.get(b.field) ?? Number.MAX_SAFE_INTEGER;
+      return aOrder-bOrder || a.field.localeCompare(b.field);
+    }).map((entity) => {
+      const state=this._xBusEntityValue(entity);
+      if (state.value === null || state.value === undefined) return "";
+      return this._technicalLine(this._xBusEntityLabel(device,entity),state.value,state.className);
+    }).join("");
 
-            const rows = device.entities
-              .filter((entity) => entity.field && entity.field !== "diagnostics")
-              .sort((a, b) => {
-                const aOrder = order.get(a.field) ?? Number.MAX_SAFE_INTEGER;
-                const bOrder = order.get(b.field) ?? Number.MAX_SAFE_INTEGER;
-                return aOrder - bOrder || a.field.localeCompare(b.field);
-              })
-              .map((entity) => {
-                const state = this._xBusEntityValue(entity);
-                if (state.value === null || state.value === undefined) return "";
-                return this._technicalLine(
-                  this._xBusEntityLabel(device, entity),
-                  state.value,
-                  state.className
-                );
-              })
-              .join("");
-
-            return `
-              <details class="xbus-card" data-xbus-key="${this._escapeHtml(String(device.id))}">
-                <summary class="xbus-title">
-                  <span class="xbus-title-main">${this._escapeHtml(title)}</span>
-                  ${
-                    device.tamperFault === null
-                      ? ""
-                      : `<span class="${fault ? "danger" : "ok"}">${this._t(
-                          fault ? "state.fault" : "state.ok"
-                        )}</span>`
-                  }
-                </summary>
-                <div class="xbus-card-body">
-                  ${this._technicalLine(this._t("system.xbus_id"), device.id)}
-                  ${this._technicalLine(this._t("system.serial"), device.serialNumber)}
-                  ${this._technicalLine(this._t("system.firmware"), device.version)}
-                  ${rows}
-                </div>
-              </details>
-            `;
-          })
-          .join("")}
-      </div>
-    </div>
-  `;
+    return `<details class="xbus-card" data-xbus-key="${this._escapeHtml(String(device.id))}"><summary class="xbus-title"><span class="xbus-title-main"><span class="xbus-title-text"><span class="xbus-title-name">${this._escapeHtml(title)}</span>${model ? `<span class="xbus-title-model">${this._escapeHtml(model)}</span>` : ""}</span></span>${device.tamperFault === null ? "" : `<span class="${fault ? "danger" : "ok"}">${this._t(fault ? "state.fault" : "state.ok")}</span>`}</summary><div class="xbus-card-body">${this._technicalLine(this._t("system.xbus_id"),device.id)}${this._technicalLine(this._t("system.serial"),device.serialNumber)}${this._technicalLine(this._t("system.firmware"),device.version)}${rows}</div></details>`;
+  }).join("")}</div></div>`;
 };
 
 SpcFlexCCard.prototype._renderTechnicalSystem = function () {
   const html = spcFlexCXBusBaseTechnicalSystem.call(this);
-  const deviceNames = this._getXBusDevices()
-    .map((device) => String(device.name || "").trim())
-    .filter(Boolean);
-
-  if (!html || !deviceNames.length || typeof DOMParser === "undefined") {
-    return html;
-  }
-
-  const documentNode = new DOMParser().parseFromString(
-    `<body>${html}</body>`,
-    "text/html"
-  );
-
+  const deviceNames = this._getXBusDevices().map((device) => String(device.name || "").trim()).filter(Boolean);
+  if (!html || !deviceNames.length || typeof DOMParser === "undefined") return html;
+  const documentNode = new DOMParser().parseFromString(`<body>${html}</body>`,"text/html");
   for (const section of documentNode.querySelectorAll(".technical-section")) {
-    const title = section
-      .querySelector(".technical-section-title")
-      ?.textContent?.trim();
-
-    if (title !== this._t("system.rf")) {
-      continue;
-    }
-
+    const title=section.querySelector(".technical-section-title")?.textContent?.trim();
+    if (title !== this._t("system.rf")) continue;
     for (const row of section.querySelectorAll(".technical-row")) {
-      const label = row.querySelector(".technical-label")?.textContent?.trim() || "";
-      const belongsToXBus = deviceNames.some(
-        (deviceName) => label === deviceName || label.startsWith(`${deviceName} `)
-      );
-
-      if (belongsToXBus) {
-        row.remove();
-      }
+      const label=row.querySelector(".technical-label")?.textContent?.trim() || "";
+      const belongsToXBus=deviceNames.some((deviceName) => label === deviceName || label.startsWith(`${deviceName} `));
+      if (belongsToXBus) row.remove();
     }
-
-    if (!section.querySelector(".technical-row")) {
-      section.remove();
-    }
+    if (!section.querySelector(".technical-row")) section.remove();
   }
-
   return documentNode.body.innerHTML;
 };
 
 SpcFlexCCard.prototype._render = function () {
-  const openXBusDevices = new Set(
-    Array.from(this.querySelectorAll("details.xbus-card[open][data-xbus-key]"))
-      .map((details) => details.dataset.xbusKey)
-      .filter(Boolean)
-  );
-
+  const openXBusDevices = new Set(Array.from(this.querySelectorAll("details.xbus-card[open][data-xbus-key]")).map((details) => details.dataset.xbusKey).filter(Boolean));
   spcFlexCXBusBaseRender.call(this);
-
-  if (!openXBusDevices.size) {
-    return;
-  }
-
+  if (!openXBusDevices.size) return;
   for (const details of this.querySelectorAll("details.xbus-card[data-xbus-key]")) {
-    if (openXBusDevices.has(details.dataset.xbusKey)) {
-      details.open = true;
-    }
+    if (openXBusDevices.has(details.dataset.xbusKey)) details.open = true;
   }
 };
 
@@ -5647,6 +5519,10 @@ SpcFlexCCard.prototype._restoreScrollPositions = function (positions) {
 };
 
 SpcFlexCCard.prototype._render = function () {
+  // Home Assistant can deliver the same zone change twice to the card: first
+  // through the direct state_changed subscription and then through the hass
+  // property update. Keep the immediate live update, but briefly coalesce the
+  // follow-up render so the whole card is not rebuilt twice in quick succession.
   if (this._spcRenderFrame != null) {
     return;
   }
@@ -5664,9 +5540,19 @@ SpcFlexCCard.prototype._render = function () {
       this._spcScrollRestoreFrame = null;
       this._restoreScrollPositions(scrollPositions);
     }) ?? null;
+
+    // One HA hass update generally follows the live event almost immediately.
+    // A short quiet period collapses that duplicate while staying well below a
+    // perceptible UI delay for unrelated state changes.
+    this._spcRenderQuietUntil = Date.now() + 40;
   };
 
-  if (typeof window.requestAnimationFrame === "function") {
+  const delay = Math.max(0, (this._spcRenderQuietUntil || 0) - Date.now());
+
+  if (delay > 0) {
+    this._spcRenderUsesAnimationFrame = false;
+    this._spcRenderFrame = window.setTimeout(render, delay);
+  } else if (typeof window.requestAnimationFrame === "function") {
     this._spcRenderUsesAnimationFrame = true;
     this._spcRenderFrame = window.requestAnimationFrame(render);
   } else {
@@ -5698,5 +5584,6 @@ SpcFlexCCard.prototype.disconnectedCallback = function () {
     this._spcScrollRestoreFrame = null;
   }
 
+  this._spcRenderQuietUntil = 0;
   spcFlexCBaseDisconnectedCallback.call(this);
 };
