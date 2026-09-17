@@ -3777,6 +3777,7 @@ SpcFlexCCard.prototype._render = function () {
 const spcFlexCZoneIsolationBaseGetZones = SpcFlexCCard.prototype._getZones;
 const spcFlexCZoneIsolationBaseRenderZoneRow = SpcFlexCCard.prototype._renderZoneRow;
 const spcFlexCZoneIsolationBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCZoneIsolationBaseRender = SpcFlexCCard.prototype._render;
 
 SpcFlexCCard.prototype._getZones = function () {
   const zones = spcFlexCZoneIsolationBaseGetZones.call(this);
@@ -3792,20 +3793,41 @@ SpcFlexCCard.prototype._getZones = function () {
         registryEntry: null,
       }));
 
+  // spc-flexc-outputs predates the isolation switch and historically accepted
+  // every switch carrying zone_id as an inhibition switch. Once isolation was
+  // added, that allowed the two switch states to overwrite each other depending
+  // on registry iteration order. Rebuild both operating states from their exact
+  // integration unique IDs so inhibition and isolation remain independent.
+  for (const zone of zones) {
+    zone.inhibited = false;
+    zone.inhibitionEntityId = null;
+    zone.isolated = false;
+    zone.isolationEntityId = null;
+  }
+
   for (const { entityId, stateObj, registryEntry } of candidates) {
     if (!entityId.startsWith("switch.")) continue;
 
     const attrs = stateObj?.attributes || {};
     const uniqueId = String(registryEntry?.unique_id || "");
-    const match = uniqueId.match(/_zone_(\d+)_isolation$/);
-    if (!match) continue;
+    const inhibitionMatch = uniqueId.match(/_zone_(\d+)_inhibition$/);
+    const isolationMatch = uniqueId.match(/_zone_(\d+)_isolation$/);
 
-    const zoneId = attrs.zone_id ?? match[1];
+    if (!inhibitionMatch && !isolationMatch) continue;
+
+    const zoneId = attrs.zone_id ?? inhibitionMatch?.[1] ?? isolationMatch?.[1];
     const zone = byId.get(String(zoneId));
     if (!zone) continue;
 
-    zone.isolated = stateObj.state === "on";
-    zone.isolationEntityId = entityId;
+    if (inhibitionMatch) {
+      zone.inhibited = stateObj.state === "on";
+      zone.inhibitionEntityId = entityId;
+    }
+
+    if (isolationMatch) {
+      zone.isolated = stateObj.state === "on";
+      zone.isolationEntityId = entityId;
+    }
   }
 
   return zones;
@@ -3841,6 +3863,103 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
   `;
 };
 
+SpcFlexCCard.prototype._zoneOperatingCounts = function (zones) {
+  const normalZones = zones.filter(
+    (zone) => zone.zoneType !== "tamper" && zone.deviceClass !== "tamper"
+  );
+  const isolated = normalZones.filter((zone) => this._zoneIsIsolated(zone)).length;
+  const inhibited = normalZones.filter(
+    (zone) => zone.inhibited === true && !this._zoneIsIsolated(zone)
+  ).length;
+  const active = normalZones.filter(
+    (zone) => zone.state === "on" && !this._zoneIsIsolated(zone)
+  ).length;
+
+  return { normalZones, isolated, inhibited, active };
+};
+
+SpcFlexCCard.prototype._renderZoneOperatingBadges = function (counts) {
+  return [
+    counts.isolated
+      ? `<span class="danger">${counts.isolated} ${this._t("state.isolated")}</span>`
+      : "",
+    counts.inhibited
+      ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", counts.inhibited)}</span>`
+      : "",
+  ].join("");
+};
+
+SpcFlexCCard.prototype._updateZoneOperatingSummaries = function () {
+  const zones = this._getZones();
+  if (!zones.length) return;
+
+  const globalCounts = this._zoneOperatingCounts(zones);
+  const globalBadges = this._renderZoneOperatingBadges(globalCounts);
+
+  // General view: keep detector activity visible for inhibited zones, suppress
+  // isolated-zone activity, and surface both operating states explicitly.
+  const systemSummary = this.querySelector(".system-view .system-summary");
+  if (systemSummary && globalBadges) {
+    systemSummary.insertAdjacentHTML(
+      "beforeend",
+      `<span class="zone-operating-summary"> · ${globalBadges}</span>`
+    );
+  }
+
+  const detectorCard = this.querySelectorAll(".system-view .summary-card")[1];
+  const detectorLabel = detectorCard?.querySelector(".summary-label");
+  if (detectorLabel) {
+    detectorLabel.innerHTML = `
+      ${this._t("tab.detectors")}
+      ${globalCounts.active ? `<span class="warning"> · ${this._tCount("group.active_count", globalCounts.active)}</span>` : ""}
+      ${globalCounts.inhibited ? `<span class="zone-inhibited"> · ${this._tCount("group.inhibited_count", globalCounts.inhibited)}</span>` : ""}
+      ${globalCounts.isolated ? `<span class="danger"> · ${globalCounts.isolated} ${this._t("state.isolated")}</span>` : ""}
+    `;
+  }
+
+  // Areas view: operating states are informational only. They never hide or
+  // disable the area's alarm controls; the SPC panel remains authoritative.
+  this.querySelectorAll(".area-card").forEach((card) => {
+    const areaId = card.querySelector("[data-area-id]")?.dataset.areaId;
+    if (areaId == null) return;
+
+    const areaZones = zones.filter(
+      (zone) => String(zone.areaId) === String(areaId)
+    );
+    const counts = this._zoneOperatingCounts(areaZones);
+    const badges = this._renderZoneOperatingBadges(counts);
+
+    const headerState = card.querySelector(".area-card-toggle-state");
+    if (headerState && badges) {
+      headerState.insertAdjacentHTML(
+        "afterbegin",
+        `<span class="area-zone-operating-summary">${badges}</span>`
+      );
+    }
+
+    const meta = card.querySelector(".area-meta");
+    if (meta) {
+      const tampers = areaZones.filter(
+        (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
+      );
+      const activeTampers = tampers.filter(
+        (zone) =>
+          !this._zoneIsIsolated(zone) &&
+          (zone.state === "on" || zone.eventTamper === true)
+      ).length;
+
+      meta.innerHTML = `
+        <span>${this._tCount("group.detector_count", counts.normalZones.length)}</span>
+        ${counts.active ? `<span class="warning">${this._tCount("group.active_count", counts.active)}</span>` : ""}
+        ${counts.inhibited ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", counts.inhibited)}</span>` : ""}
+        ${counts.isolated ? `<span class="danger">${counts.isolated} ${this._t("state.isolated")}</span>` : ""}
+        ${!counts.active && !counts.inhibited && !counts.isolated ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
+        ${activeTampers ? `<span class="danger">${this._t("area.tamper")}</span>` : ""}
+      `;
+    }
+  });
+};
+
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCZoneIsolationBaseStyles.call(this)}
     <style>
@@ -3853,7 +3972,24 @@ SpcFlexCCard.prototype._styles = function () {
       .zone-isolated {
         color:var(--error-color,#db4437);
       }
+      .zone-operating-summary,
+      .area-zone-operating-summary {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+      }
+      .area-zone-operating-summary {
+        flex-wrap:wrap;
+        justify-content:flex-end;
+        font-size:12px;
+        font-weight:700;
+      }
     </style>`;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  spcFlexCZoneIsolationBaseRender.call(this);
+  this._updateZoneOperatingSummaries();
 };
 
 /* SPC FlexC Card v1.0.5 zone grouping extension. */
@@ -4003,15 +4139,23 @@ SpcFlexCCard.prototype._renderZones = function () {
           const tampers = group.zones.filter(
             (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
           );
-          const inhibitedZones = group.zones.filter((zone) =>
-            this._zoneIsInhibited(zone)
+          const isolatedZones = group.zones.filter((zone) =>
+            this._zoneIsIsolated?.(zone) === true
           ).length;
+          const inhibitedZones = group.zones.filter((zone) =>
+            this._zoneIsInhibited(zone) && this._zoneIsIsolated?.(zone) !== true
+          ).length;
+          // Inhibition does not suppress the detector's physical activity in
+          // the UI. Isolation does: an isolated zone is outside normal
+          // supervision and its activity is intentionally not summarized.
           const activeZones = normalZones.filter(
-            (zone) => zone.state === "on" && !this._zoneIsInhibited(zone)
+            (zone) =>
+              zone.state === "on" &&
+              this._zoneIsIsolated?.(zone) !== true
           ).length;
           const activeTampers = tampers.filter(
             (zone) =>
-              !this._zoneIsInhibited(zone) &&
+              this._zoneIsIsolated?.(zone) !== true &&
               (zone.state === "on" || zone.eventTamper === true)
           ).length;
           const unavailable = group.zones.filter(
@@ -4040,11 +4184,12 @@ SpcFlexCCard.prototype._renderZones = function () {
                 </div>
 
                 <div class="zone-group-summary">
+                  ${isolatedZones ? `<span class="danger">${isolatedZones} ${this._t("state.isolated")}</span>` : ""}
                   ${inhibitedZones ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", inhibitedZones)}</span>` : ""}
-                  ${activeZones ? `<span class="danger">${this._tCount("group.active_count", activeZones)}</span>` : ""}
+                  ${activeZones ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>` : ""}
                   ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
                   ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
-                  ${!inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
+                  ${!isolatedZones && !inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
                 </div>
               </button>
 
@@ -4548,14 +4693,28 @@ SpcFlexCCard.prototype._renderAreas = function () {
                 zone.deviceClass === "tamper"
             );
 
+            const isolatedZones = normalZones.filter(
+              (zone) => this._zoneIsIsolated?.(zone) === true
+            ).length;
+
+            const inhibitedZones = normalZones.filter(
+              (zone) =>
+                zone.inhibited === true &&
+                this._zoneIsIsolated?.(zone) !== true
+            ).length;
+
             const activeZones = normalZones.filter(
-              (zone) => zone.state === "on"
+              (zone) =>
+                zone.state === "on" &&
+                zone.inhibited !== true &&
+                this._zoneIsIsolated?.(zone) !== true
             ).length;
 
             const activeTampers = tampers.filter(
               (zone) =>
-                zone.state === "on" ||
-                zone.eventTamper === true
+                zone.inhibited !== true &&
+                this._zoneIsIsolated?.(zone) !== true &&
+                (zone.state === "on" || zone.eventTamper === true)
             ).length;
 
             const areaEntity = this._getAreaAlarmEntity(area.id);
@@ -4615,10 +4774,14 @@ SpcFlexCCard.prototype._renderAreas = function () {
 
                         <div class="area-meta">
                           <span>${this._tCount("group.detector_count", normalZones.length)}</span>
+                          ${isolatedZones ? `<span class="danger">${isolatedZones} ${this._t("state.isolated")}</span>` : ""}
+                          ${inhibitedZones ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", inhibitedZones)}</span>` : ""}
                           ${
                             activeZones
                               ? `<span class="warning">${this._tCount("group.active_count", activeZones)}</span>`
-                              : `<span class="ok">${this._t("group.rest")}</span>`
+                              : !isolatedZones && !inhibitedZones
+                                ? `<span class="ok">${this._t("group.rest")}</span>`
+                                : ""
                           }
                           ${
                             activeTampers
