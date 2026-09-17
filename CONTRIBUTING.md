@@ -8,6 +8,7 @@ Current source layout:
 
 - `src/ha-spc-flexc-card.js` — core card, alarm areas, zones and technical views.
 - `src/spc-flexc-outputs.js` — Mapping Gates, doors and zone inhibition extensions.
+- `src/spc-flexc-zone-isolation.js` — dedicated zone isolation state discovery and isolated-zone rendering.
 - `src/spc-flexc-zone-groups.js` — collapsible area-based zone grouping.
 - `src/spc-flexc-i18n.js` — card internationalization (i18n) and translations.
 - `src/spc-flexc-area-cards.js` — collapsible SPC area cards and area toolbar.
@@ -68,7 +69,9 @@ Technical protocol values, entity IDs, CSS class names, Material Design icon nam
 
 ## Alarm safety
 
-Do not implement automatic retries of state-changing alarm actions. Read-only operations may use bounded retry logic when appropriate, but an arm, disarm, door, inhibition or Mapping Gate command must never be repeated automatically by the card.
+Do not implement automatic retries of state-changing alarm actions. Read-only operations may use bounded retry logic when appropriate, but an arm, disarm, door, inhibition, isolation or Mapping Gate command must never be repeated automatically by the card.
+
+Zone inhibition and isolation are separate SPC states. The card must use the dedicated Home Assistant inhibition/isolation switch entities exposed by the integration rather than infer isolation from a raw SPC status value. The panel remains authoritative for whether each operation is currently allowed.
 
 Diagnostic information must not be presented as having stronger semantics than the SPC FlexC integration has validated. Raw or partially understood protocol values should remain identifiable as diagnostics until their meaning has been confirmed.
 
