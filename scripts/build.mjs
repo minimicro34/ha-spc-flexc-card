@@ -5,6 +5,7 @@ const CARD_VERSION = packageMetadata.version;
 const sources = await Promise.all([
   readFile("src/ha-spc-flexc-card.js", "utf8"),
   readFile("src/spc-flexc-outputs.js", "utf8"),
+  readFile("src/spc-flexc-zone-isolation.js", "utf8"),
   readFile("src/spc-flexc-zone-groups.js", "utf8"),
   readFile("src/spc-flexc-i18n.js", "utf8"),
   readFile("src/spc-flexc-area-cards.js", "utf8"),
@@ -21,7 +22,7 @@ const core = sources[0].replace(
 
 await writeFile(
   "ha-spc-flexc-card.js",
-  `${core.trimEnd()}\n\n${sources[1].trim()}\n\n${sources[2].trim()}\n\n${sources[3].trim()}\n\n${sources[4].trim()}\n\n${sources[5].trim()}\n\n${sources[6].trim()}\n\n${sources[7].trim()}\n\n${sources[8].trimStart()}`,
+  `${core.trimEnd()}\n\n${sources[1].trim()}\n\n${sources[2].trim()}\n\n${sources[3].trim()}\n\n${sources[4].trim()}\n\n${sources[5].trim()}\n\n${sources[6].trim()}\n\n${sources[7].trim()}\n\n${sources[8].trim()}\n\n${sources[9].trimStart()}`,
   "utf8"
 );
 
