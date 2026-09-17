@@ -28,6 +28,19 @@ SpcFlexCCard.prototype._xBusDeviceRegistryMap = function () {
   return devices;
 };
 
+SpcFlexCCard.prototype._xBusModelFromDiagnostics = function (device) {
+  const type = Number(device.deviceType);
+  const inputs = Number(device.inputCount);
+  const outputs = Number(device.outputCount);
+
+  if (type === 1) return "SPC Keypad";
+  if (type === 7) return "SPC Comfort Keypad";
+  if (type === 6 && inputs === 4 && outputs === 2) return "SPCA210";
+  if (type === 2 && inputs === 8 && outputs === 2) return "SPCE650";
+  if (type === 2 && inputs === 0 && outputs === 8) return "SPCE450";
+  return null;
+};
+
 SpcFlexCCard.prototype._xBusModelLabel = function (model) {
   const value = String(model || "").trim();
   if (!value) return null;
@@ -61,6 +74,9 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
         id: deviceId,
         name: null,
         model: null,
+        deviceType: null,
+        inputCount: null,
+        outputCount: null,
         serialNumber: null,
         version: null,
         siaAddress: null,
@@ -86,6 +102,9 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
 
     device.name = attrs.xbus_device_name || attrs.name || device.name;
     device.model = registryDevice?.model || attrs.model || device.model;
+    device.deviceType = attrs.device_type ?? device.deviceType;
+    device.inputCount = attrs.input_count ?? device.inputCount;
+    device.outputCount = attrs.output_count ?? device.outputCount;
     device.serialNumber = attrs.serial_number ?? registryDevice?.serial_number ?? device.serialNumber;
     device.version = attrs.version ?? registryDevice?.sw_version ?? device.version;
     device.siaAddress = attrs.sia_address ?? device.siaAddress;
@@ -102,6 +121,10 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
     }
 
     device.entities.push({ entityId, stateObj, field });
+  }
+
+  for (const device of devices.values()) {
+    device.model ||= this._xBusModelFromDiagnostics(device);
   }
 
   return Array.from(devices.values()).sort((a, b) => Number(a.id) - Number(b.id));
