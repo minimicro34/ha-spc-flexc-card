@@ -18,20 +18,41 @@ SpcFlexCCard.prototype._getZones = function () {
         registryEntry: null,
       }));
 
+  // spc-flexc-outputs predates the isolation switch and historically accepted
+  // every switch carrying zone_id as an inhibition switch. Once isolation was
+  // added, that allowed the two switch states to overwrite each other depending
+  // on registry iteration order. Rebuild both operating states from their exact
+  // integration unique IDs so inhibition and isolation remain independent.
+  for (const zone of zones) {
+    zone.inhibited = false;
+    zone.inhibitionEntityId = null;
+    zone.isolated = false;
+    zone.isolationEntityId = null;
+  }
+
   for (const { entityId, stateObj, registryEntry } of candidates) {
     if (!entityId.startsWith("switch.")) continue;
 
     const attrs = stateObj?.attributes || {};
     const uniqueId = String(registryEntry?.unique_id || "");
-    const match = uniqueId.match(/_zone_(\d+)_isolation$/);
-    if (!match) continue;
+    const inhibitionMatch = uniqueId.match(/_zone_(\d+)_inhibition$/);
+    const isolationMatch = uniqueId.match(/_zone_(\d+)_isolation$/);
 
-    const zoneId = attrs.zone_id ?? match[1];
+    if (!inhibitionMatch && !isolationMatch) continue;
+
+    const zoneId = attrs.zone_id ?? inhibitionMatch?.[1] ?? isolationMatch?.[1];
     const zone = byId.get(String(zoneId));
     if (!zone) continue;
 
-    zone.isolated = stateObj.state === "on";
-    zone.isolationEntityId = entityId;
+    if (inhibitionMatch) {
+      zone.inhibited = stateObj.state === "on";
+      zone.inhibitionEntityId = entityId;
+    }
+
+    if (isolationMatch) {
+      zone.isolated = stateObj.state === "on";
+      zone.isolationEntityId = entityId;
+    }
   }
 
   return zones;
