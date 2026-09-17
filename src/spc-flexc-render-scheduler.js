@@ -89,10 +89,6 @@ SpcFlexCCard.prototype._restoreScrollPositions = function (positions) {
 };
 
 SpcFlexCCard.prototype._render = function () {
-  // Home Assistant can deliver the same zone change twice to the card: first
-  // through the direct state_changed subscription and then through the hass
-  // property update. Keep the immediate live update, but briefly coalesce the
-  // follow-up render so the whole card is not rebuilt twice in quick succession.
   if (this._spcRenderFrame != null) {
     return;
   }
@@ -102,27 +98,43 @@ SpcFlexCCard.prototype._render = function () {
     this._spcRenderUsesAnimationFrame = false;
 
     const scrollPositions = this._captureScrollPositions();
+
+    // The legacy renderer replaces the complete card DOM with innerHTML on
+    // every HA update. Keep the host at its current rendered height while the
+    // replacement custom elements are attached/upgraded. Without this guard,
+    // the dashboard briefly reflows and produces a visible vertical jump on
+    // every tab, even when the user's scrollTop is restored afterwards.
+    const previousMinHeight = this.style.minHeight;
+    const renderedHeight = this.getBoundingClientRect().height;
+    if (renderedHeight > 0) {
+      this.style.minHeight = `${renderedHeight}px`;
+    }
+
     spcFlexCImmediateRender.call(this);
     this._showCardVersion();
     this._restoreScrollPositions(scrollPositions);
 
+    if (this._spcScrollRestoreFrame != null &&
+        typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(this._spcScrollRestoreFrame);
+    }
+
     this._spcScrollRestoreFrame = window.requestAnimationFrame?.(() => {
       this._spcScrollRestoreFrame = null;
       this._restoreScrollPositions(scrollPositions);
-    }) ?? null;
 
-    // One HA hass update generally follows the live event almost immediately.
-    // A short quiet period collapses that duplicate while staying well below a
-    // perceptible UI delay for unrelated state changes.
-    this._spcRenderQuietUntil = Date.now() + 40;
+      // Release the temporary layout lock only after the replacement DOM has
+      // had a frame to settle. Restore scroll once more after releasing it in
+      // case the new content legitimately has a different height.
+      this.style.minHeight = previousMinHeight;
+      this._spcLayoutReleaseFrame = window.requestAnimationFrame?.(() => {
+        this._spcLayoutReleaseFrame = null;
+        this._restoreScrollPositions(scrollPositions);
+      }) ?? null;
+    }) ?? null;
   };
 
-  const delay = Math.max(0, (this._spcRenderQuietUntil || 0) - Date.now());
-
-  if (delay > 0) {
-    this._spcRenderUsesAnimationFrame = false;
-    this._spcRenderFrame = window.setTimeout(render, delay);
-  } else if (typeof window.requestAnimationFrame === "function") {
+  if (typeof window.requestAnimationFrame === "function") {
     this._spcRenderUsesAnimationFrame = true;
     this._spcRenderFrame = window.requestAnimationFrame(render);
   } else {
@@ -154,6 +166,14 @@ SpcFlexCCard.prototype.disconnectedCallback = function () {
     this._spcScrollRestoreFrame = null;
   }
 
-  this._spcRenderQuietUntil = 0;
+  if (
+    this._spcLayoutReleaseFrame != null &&
+    typeof window.cancelAnimationFrame === "function"
+  ) {
+    window.cancelAnimationFrame(this._spcLayoutReleaseFrame);
+    this._spcLayoutReleaseFrame = null;
+  }
+
+  this.style.minHeight = "";
   spcFlexCBaseDisconnectedCallback.call(this);
 };
