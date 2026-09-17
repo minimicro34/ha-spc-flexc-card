@@ -92,11 +92,17 @@ independently, with global **Expand all** and **Collapse all** controls.
 Collapsed headers keep useful information such as detector count, tamper count,
 active zones, inhibited zones and unavailable zones.
 
+Starting with **v1.0.7**, the card also consumes the dedicated zone isolation
+switches exposed by SPC FlexC v1.1.0. Isolation is kept separate from inhibition:
+an isolated zone is shown in red with an **Isolated / Isolé** badge, while an
+inhibited zone keeps its own inhibited indication. The card does not infer
+isolation from a raw SPC `STATUS` value.
+
 The visual convention is:
 
 - green — normal;
 - orange — normal activity or inhibited state;
-- red — alarm, fault or tamper;
+- red — alarm, fault, tamper or isolated state;
 - grey — unavailable or unknown.
 
 ### Doors
@@ -254,6 +260,10 @@ panel remains authoritative for the resulting state and for rejected actions.
 
 Automatic retries of state-changing commands must not be implemented.
 
+Zone inhibition and isolation are represented independently using the dedicated
+Home Assistant entities exposed by the SPC FlexC integration. The card does not
+use a raw SPC status value as the canonical isolation state.
+
 Mapping Gates are logical panel objects. Before controlling one, verify in SPC
 what it is mapped to. Door mode changes must not be interpreted as proof that a
 physical door or lock has actuated.
@@ -272,6 +282,7 @@ The card is split into dedicated source modules:
 ```text
 src/ha-spc-flexc-card.js
 src/spc-flexc-outputs.js
+src/spc-flexc-zone-isolation.js
 src/spc-flexc-zone-groups.js
 src/spc-flexc-i18n.js
 src/spc-flexc-area-cards.js
@@ -285,6 +296,7 @@ Their responsibilities are:
 
 - `ha-spc-flexc-card.js` — main card, alarm, area, detector and system logic;
 - `spc-flexc-outputs.js` — Mapping Gates, door supervision and zone inhibition;
+- `spc-flexc-zone-isolation.js` — dedicated zone isolation discovery and isolated-zone rendering;
 - `spc-flexc-zone-groups.js` — detector grouping by SPC area and collapse state;
 - `spc-flexc-i18n.js` — centralized French/English localization;
 - `spc-flexc-area-cards.js` — collapsible area cards and area-wide layout helpers;
