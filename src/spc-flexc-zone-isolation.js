@@ -3,6 +3,7 @@
 const spcFlexCZoneIsolationBaseGetZones = SpcFlexCCard.prototype._getZones;
 const spcFlexCZoneIsolationBaseRenderZoneRow = SpcFlexCCard.prototype._renderZoneRow;
 const spcFlexCZoneIsolationBaseStyles = SpcFlexCCard.prototype._styles;
+const spcFlexCZoneIsolationBaseRender = SpcFlexCCard.prototype._render;
 
 SpcFlexCCard.prototype._getZones = function () {
   const zones = spcFlexCZoneIsolationBaseGetZones.call(this);
@@ -88,6 +89,103 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
   `;
 };
 
+SpcFlexCCard.prototype._zoneOperatingCounts = function (zones) {
+  const normalZones = zones.filter(
+    (zone) => zone.zoneType !== "tamper" && zone.deviceClass !== "tamper"
+  );
+  const isolated = normalZones.filter((zone) => this._zoneIsIsolated(zone)).length;
+  const inhibited = normalZones.filter(
+    (zone) => zone.inhibited === true && !this._zoneIsIsolated(zone)
+  ).length;
+  const active = normalZones.filter(
+    (zone) => zone.state === "on" && !this._zoneIsIsolated(zone)
+  ).length;
+
+  return { normalZones, isolated, inhibited, active };
+};
+
+SpcFlexCCard.prototype._renderZoneOperatingBadges = function (counts) {
+  return [
+    counts.isolated
+      ? `<span class="danger">${counts.isolated} ${this._t("state.isolated")}</span>`
+      : "",
+    counts.inhibited
+      ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", counts.inhibited)}</span>`
+      : "",
+  ].join("");
+};
+
+SpcFlexCCard.prototype._updateZoneOperatingSummaries = function () {
+  const zones = this._getZones();
+  if (!zones.length) return;
+
+  const globalCounts = this._zoneOperatingCounts(zones);
+  const globalBadges = this._renderZoneOperatingBadges(globalCounts);
+
+  // General view: keep detector activity visible for inhibited zones, suppress
+  // isolated-zone activity, and surface both operating states explicitly.
+  const systemSummary = this.querySelector(".system-view .system-summary");
+  if (systemSummary && globalBadges) {
+    systemSummary.insertAdjacentHTML(
+      "beforeend",
+      `<span class="zone-operating-summary"> · ${globalBadges}</span>`
+    );
+  }
+
+  const detectorCard = this.querySelectorAll(".system-view .summary-card")[1];
+  const detectorLabel = detectorCard?.querySelector(".summary-label");
+  if (detectorLabel) {
+    detectorLabel.innerHTML = `
+      ${this._t("tab.detectors")}
+      ${globalCounts.active ? `<span class="warning"> · ${this._tCount("group.active_count", globalCounts.active)}</span>` : ""}
+      ${globalCounts.inhibited ? `<span class="zone-inhibited"> · ${this._tCount("group.inhibited_count", globalCounts.inhibited)}</span>` : ""}
+      ${globalCounts.isolated ? `<span class="danger"> · ${globalCounts.isolated} ${this._t("state.isolated")}</span>` : ""}
+    `;
+  }
+
+  // Areas view: operating states are informational only. They never hide or
+  // disable the area's alarm controls; the SPC panel remains authoritative.
+  this.querySelectorAll(".area-card").forEach((card) => {
+    const areaId = card.querySelector("[data-area-id]")?.dataset.areaId;
+    if (areaId == null) return;
+
+    const areaZones = zones.filter(
+      (zone) => String(zone.areaId) === String(areaId)
+    );
+    const counts = this._zoneOperatingCounts(areaZones);
+    const badges = this._renderZoneOperatingBadges(counts);
+
+    const headerState = card.querySelector(".area-card-toggle-state");
+    if (headerState && badges) {
+      headerState.insertAdjacentHTML(
+        "afterbegin",
+        `<span class="area-zone-operating-summary">${badges}</span>`
+      );
+    }
+
+    const meta = card.querySelector(".area-meta");
+    if (meta) {
+      const tampers = areaZones.filter(
+        (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
+      );
+      const activeTampers = tampers.filter(
+        (zone) =>
+          !this._zoneIsIsolated(zone) &&
+          (zone.state === "on" || zone.eventTamper === true)
+      ).length;
+
+      meta.innerHTML = `
+        <span>${this._tCount("group.detector_count", counts.normalZones.length)}</span>
+        ${counts.active ? `<span class="warning">${this._tCount("group.active_count", counts.active)}</span>` : ""}
+        ${counts.inhibited ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", counts.inhibited)}</span>` : ""}
+        ${counts.isolated ? `<span class="danger">${counts.isolated} ${this._t("state.isolated")}</span>` : ""}
+        ${!counts.active && !counts.inhibited && !counts.isolated ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
+        ${activeTampers ? `<span class="danger">${this._t("area.tamper")}</span>` : ""}
+      `;
+    }
+  });
+};
+
 SpcFlexCCard.prototype._styles = function () {
   return `${spcFlexCZoneIsolationBaseStyles.call(this)}
     <style>
@@ -100,5 +198,22 @@ SpcFlexCCard.prototype._styles = function () {
       .zone-isolated {
         color:var(--error-color,#db4437);
       }
+      .zone-operating-summary,
+      .area-zone-operating-summary {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+      }
+      .area-zone-operating-summary {
+        flex-wrap:wrap;
+        justify-content:flex-end;
+        font-size:12px;
+        font-weight:700;
+      }
     </style>`;
+};
+
+SpcFlexCCard.prototype._render = function () {
+  spcFlexCZoneIsolationBaseRender.call(this);
+  this._updateZoneOperatingSummaries();
 };
