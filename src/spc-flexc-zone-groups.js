@@ -145,15 +145,22 @@ SpcFlexCCard.prototype._renderZones = function () {
           const tampers = group.zones.filter(
             (zone) => zone.zoneType === "tamper" || zone.deviceClass === "tamper"
           );
+          const isolatedZones = group.zones.filter((zone) =>
+            this._zoneIsIsolated?.(zone) === true
+          ).length;
           const inhibitedZones = group.zones.filter((zone) =>
-            this._zoneIsInhibited(zone)
+            this._zoneIsInhibited(zone) && this._zoneIsIsolated?.(zone) !== true
           ).length;
           const activeZones = normalZones.filter(
-            (zone) => zone.state === "on" && !this._zoneIsInhibited(zone)
+            (zone) =>
+              zone.state === "on" &&
+              !this._zoneIsInhibited(zone) &&
+              this._zoneIsIsolated?.(zone) !== true
           ).length;
           const activeTampers = tampers.filter(
             (zone) =>
               !this._zoneIsInhibited(zone) &&
+              this._zoneIsIsolated?.(zone) !== true &&
               (zone.state === "on" || zone.eventTamper === true)
           ).length;
           const unavailable = group.zones.filter(
@@ -182,11 +189,12 @@ SpcFlexCCard.prototype._renderZones = function () {
                 </div>
 
                 <div class="zone-group-summary">
+                  ${isolatedZones ? `<span class="danger">${isolatedZones} ${this._t("state.isolated")}</span>` : ""}
                   ${inhibitedZones ? `<span class="zone-inhibited">${this._tCount("group.inhibited_count", inhibitedZones)}</span>` : ""}
                   ${activeZones ? `<span class="danger">${this._tCount("group.active_count", activeZones)}</span>` : ""}
                   ${activeTampers ? `<span class="danger">${this._tCount("group.fault_count", activeTampers)}</span>` : ""}
                   ${unavailable ? `<span class="muted">${this._tCount("group.unavailable_count", unavailable)}</span>` : ""}
-                  ${!inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
+                  ${!isolatedZones && !inhibitedZones && !activeZones && !activeTampers && !unavailable ? `<span class="ok">${this._t("group.rest")}</span>` : ""}
                 </div>
               </button>
 
