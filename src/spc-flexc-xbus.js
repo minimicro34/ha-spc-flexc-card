@@ -121,11 +121,7 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
       if (stateObj.state === "on") device.tamperInhibited = true;
       if (stateObj.state === "off") device.tamperInhibited = false;
     }
-    if (field === "tamper_inhibited") {
-    if (stateObj.state === "on") return { value:this._t("state.inhibited"), className:"warning" };
-    if (stateObj.state === "off") return { value:this._t("state.not_inhibited"), className:"ok" };
-  }
-  if (field === "tamper_isolated") {
+    if (field === "tamper_isolated") {
       if (stateObj.state === "on") device.tamperIsolated = true;
       if (stateObj.state === "off") device.tamperIsolated = false;
     }
@@ -145,6 +141,10 @@ SpcFlexCCard.prototype._xBusEntityValue = function (entity) {
   if (field === "tamper_fault") {
     if (stateObj.state === "on") return { value:this._t("state.fault"), className:"danger" };
     if (stateObj.state === "off") return { value:this._t("state.ok"), className:"ok" };
+  }
+  if (field === "tamper_inhibited") {
+    if (stateObj.state === "on") return { value:this._t("state.inhibited"), className:"warning" };
+    if (stateObj.state === "off") return { value:this._t("state.not_inhibited"), className:"ok" };
   }
   if (field === "tamper_isolated") {
     if (stateObj.state === "on") return { value:this._t("state.isolated"), className:"warning" };
