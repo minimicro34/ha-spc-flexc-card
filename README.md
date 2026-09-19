@@ -148,6 +148,11 @@ Starting with **v1.0.6**, X-BUS and ATP cards are collapsible to keep large
 installations readable. X-BUS RF metadata is kept with its X-BUS device instead
 of being duplicated in the generic RF section.
 
+Starting with **v1.0.8**, X-BUS tamper supervision keeps fault, inhibition and
+isolation as separate states. Active states remain visible while an X-BUS device
+card is collapsed. Inhibition follows the same orange/amber visual convention as
+inhibited detectors, while faults and isolation use the red fault convention.
+
 On wide displays, the System view is organized into three logical columns:
 
 1. panel, power, RF and modem;
