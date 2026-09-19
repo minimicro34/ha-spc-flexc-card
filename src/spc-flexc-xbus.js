@@ -143,7 +143,7 @@ SpcFlexCCard.prototype._xBusEntityValue = function (entity) {
     if (stateObj.state === "off") return { value:this._t("state.ok"), className:"ok" };
   }
   if (field === "tamper_inhibited") {
-    if (stateObj.state === "on") return { value:this._t("state.inhibited"), className:"warning" };
+    if (stateObj.state === "on") return { value:this._t("state.inhibited"), className:"zone-inhibited" };
     if (stateObj.state === "off") return { value:this._t("state.not_inhibited"), className:"ok" };
   }
   if (field === "tamper_isolated") {
@@ -174,7 +174,7 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
     const isolated = device.tamperIsolated === true;
     const headerStates = [
       device.tamperFault === true ? `<span class="danger">${this._t("state.fault")}</span>` : "",
-      device.tamperInhibited === true ? `<span class="warning">${this._t("state.inhibited")}</span>` : "",
+      device.tamperInhibited === true ? `<span class="zone-inhibited">${this._t("state.inhibited")}</span>` : "",
       device.tamperIsolated === true ? `<span class="danger">${this._t("state.isolated")}</span>` : "",
     ].filter(Boolean).join(" ");
     const rows = device.entities.filter((entity) => entity.field && entity.field !== "diagnostics").sort((a,b) => {
