@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.0.8] - 2026-09-19
 
+### Added
+
+- Display X-BUS tamper inhibition as a dedicated state alongside tamper fault and isolation.
+- Keep active X-BUS tamper fault, inhibition and isolation visible in collapsed device headers.
+- Add localized **Inhibited / Inhibé** and **Not inhibited / Non inhibé** X-BUS state labels.
+
+### Changed
+
+- Use the same orange/amber visual convention for X-BUS tamper inhibition as for inhibited detectors.
+
 ### Fixed
 
 - Preserve the already-rendered card shell during same-tab live updates instead of replacing the complete visible card DOM on every SPC zone state change.
@@ -14,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Notes
 
-- This change is intentionally limited to rendering stability; SPC zone inhibition, isolation, arming and X-BUS behavior are unchanged from v1.0.7.
+- X-BUS tamper inhibition, isolation and fault states are consumed from the dedicated states exposed by SPC FlexC v1.1.1.
 - Full card rendering is still used when the active tab or available tab set changes.
 
 **Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.7...v1.0.8
