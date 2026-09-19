@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.8] - 2026-09-19
+
+### Fixed
+
+- Preserve the already-rendered card shell during same-tab live updates instead of replacing the complete visible card DOM on every SPC zone state change.
+- Reduce full-card flicker and vertical jumping observed on Windows desktop browsers when detectors change state.
+- Keep the existing render pipeline, extension post-processing and event handlers intact by transplanting the freshly rendered active-view content into the stable card shell before browser paint.
+
+### Notes
+
+- This change is intentionally limited to rendering stability; SPC zone inhibition, isolation, arming and X-BUS behavior are unchanged from v1.0.7.
+- Full card rendering is still used when the active tab or available tab set changes.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.7...v1.0.8
+
 ## [1.0.7] - 2026-09-17
 
 ### Added
