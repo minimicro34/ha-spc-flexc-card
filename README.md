@@ -153,6 +153,12 @@ isolation as separate states. Active states remain visible while an X-BUS device
 card is collapsed. Inhibition follows the same orange/amber visual convention as
 inhibited detectors, while faults and isolation use the red fault convention.
 
+Starting with **v1.0.9**, X-BUS cards use the device serial number as their
+frontend identity when available. Devices that share the same local X-BUS ID,
+including devices on different X-BUS branches or device families, therefore
+remain displayed as separate cards. The local X-BUS ID is still shown as
+diagnostic information.
+
 On wide displays, the System view is organized into three logical columns:
 
 1. panel, power, RF and modem;
