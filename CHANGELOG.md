@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.9] - 2026-09-23
+
+### Fixed
+
+- Group X-BUS diagnostics by device serial identity instead of assuming that the local X-BUS ID is globally unique.
+- Preserve separate X-BUS cards when multiple devices share the same local ID.
+- Support serial-based X-BUS entity unique IDs, including hexadecimal serial numbers exposed by SPC FlexC v1.1.2 beta builds.
+- Preserve expanded/collapsed X-BUS card state using the serial-based device identity.
+
+### Notes
+
+- The local X-BUS ID remains visible as diagnostic information but is no longer used as the frontend device identity.
+- This aligns the card with the serial-based X-BUS identity model introduced for installations with duplicate local IDs.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.8...v1.0.9
+
 ## [1.0.8] - 2026-09-19
 
 ### Added
