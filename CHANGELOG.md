@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.10] - 2026-09-24
+
+### Fixed
+
+- Prevent panel-level X-BUS fault entities such as battery and mains faults from being misidentified as physical X-BUS devices.
+- Restrict unique-ID fallback discovery to numeric or hexadecimal X-BUS device identities while preserving legacy numeric IDs and serial-based identities.
+
+### Notes
+
+- Physical X-BUS devices continue to use their serial number as the frontend identity when available.
+- This keeps devices with duplicate local X-BUS IDs separate without creating spurious `X-BUS null` cards.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.9...v1.0.10
+
 ## [1.0.9] - 2026-09-23
 
 ### Fixed

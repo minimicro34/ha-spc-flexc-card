@@ -93,7 +93,7 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
   for (const { entityId, stateObj, registryEntry } of this._scopedStates(true)) {
     const attrs = stateObj?.attributes || {};
     const uniqueId = String(registryEntry?.unique_id || "");
-    const match = uniqueId.match(/_xbus_([^_]+)_(.+)$/);
+    const match = uniqueId.match(/_xbus_([0-9A-Fa-f]+)_(.+)$/);
     const registryDevice = registryDeviceMap.get(registryEntry?.device_id);
     const serialNumber =
       attrs.serial_number ?? registryDevice?.serial_number ?? match?.[1] ?? null;
