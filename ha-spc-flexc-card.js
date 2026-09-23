@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.8";
+const CARD_VERSION = "1.0.9";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -5190,10 +5190,11 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
     registryDevices.map((device) => [device.id, device])
   );
 
-  const ensureDevice = (deviceId) => {
-    const key = String(deviceId);
+  const ensureDevice = (identity, deviceId) => {
+    const key = String(identity);
     if (!devices.has(key)) {
       devices.set(key, {
+        key,
         id: deviceId,
         name: null,
         model: null,
@@ -5215,21 +5216,24 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
   for (const { entityId, stateObj, registryEntry } of this._scopedStates(true)) {
     const attrs = stateObj?.attributes || {};
     const uniqueId = String(registryEntry?.unique_id || "");
-    const match = uniqueId.match(/_xbus_(\d+)_(.+)$/);
-    const deviceId = attrs.xbus_device_id ?? match?.[1] ?? null;
-
-    if (deviceId === null || deviceId === undefined) continue;
-
-    const device = ensureDevice(deviceId);
-    const field = match?.[2] || null;
+    const match = uniqueId.match(/_xbus_([^_]+)_(.+)$/);
     const registryDevice = registryDeviceMap.get(registryEntry?.device_id);
+    const serialNumber =
+      attrs.serial_number ?? registryDevice?.serial_number ?? match?.[1] ?? null;
+    const deviceId = attrs.xbus_device_id ?? null;
+    const identity = serialNumber ?? deviceId;
+
+    if (identity === null || identity === undefined) continue;
+
+    const device = ensureDevice(identity, deviceId);
+    const field = match?.[2] || null;
 
     device.name = attrs.xbus_device_name || attrs.name || device.name;
     device.model = registryDevice?.model || attrs.model || device.model;
     device.deviceType = attrs.device_type ?? device.deviceType;
     device.inputCount = attrs.input_count ?? device.inputCount;
     device.outputCount = attrs.output_count ?? device.outputCount;
-    device.serialNumber = attrs.serial_number ?? registryDevice?.serial_number ?? device.serialNumber;
+    device.serialNumber = serialNumber ?? device.serialNumber;
     device.version = attrs.version ?? registryDevice?.sw_version ?? device.version;
     device.siaAddress = attrs.sia_address ?? device.siaAddress;
 
@@ -5256,7 +5260,15 @@ SpcFlexCCard.prototype._getXBusDevices = function () {
     device.model ||= this._xBusModelFromDiagnostics(device);
   }
 
-  return Array.from(devices.values()).sort((a, b) => Number(a.id) - Number(b.id));
+  return Array.from(devices.values()).sort((a, b) => {
+    const idOrder =
+      Number(a.id ?? Number.MAX_SAFE_INTEGER) -
+      Number(b.id ?? Number.MAX_SAFE_INTEGER);
+    if (idOrder) return idOrder;
+    return String(a.serialNumber || a.key).localeCompare(
+      String(b.serialNumber || b.key)
+    );
+  });
 };
 
 SpcFlexCCard.prototype._xBusEntityValue = function (entity) {
@@ -5310,7 +5322,7 @@ SpcFlexCCard.prototype._renderXBusDevices = function () {
       return this._technicalLine(this._xBusEntityLabel(device,entity),state.value,state.className);
     }).join("");
 
-    return `<details class="xbus-card" data-xbus-key="${this._escapeHtml(String(device.id))}"><summary class="xbus-title"><span class="xbus-title-main"><span class="xbus-title-text"><span class="xbus-title-name">${this._escapeHtml(title)}</span>${model ? `<span class="xbus-title-model">${this._escapeHtml(model)}</span>` : ""}</span></span>${headerStates || (device.tamperFault === false && device.tamperInhibited !== true && device.tamperIsolated !== true ? `<span class="ok">${this._t("state.ok")}</span>` : "")}</summary><div class="xbus-card-body">${this._technicalLine(this._t("system.xbus_id"),device.id)}${this._technicalLine(this._t("system.serial"),device.serialNumber)}${this._technicalLine(this._t("system.firmware"),device.version)}${rows}</div></details>`;
+    return `<details class="xbus-card" data-xbus-key="${this._escapeHtml(String(device.key))}"><summary class="xbus-title"><span class="xbus-title-main"><span class="xbus-title-text"><span class="xbus-title-name">${this._escapeHtml(title)}</span>${model ? `<span class="xbus-title-model">${this._escapeHtml(model)}</span>` : ""}</span></span>${headerStates || (device.tamperFault === false && device.tamperInhibited !== true && device.tamperIsolated !== true ? `<span class="ok">${this._t("state.ok")}</span>` : "")}</summary><div class="xbus-card-body">${this._technicalLine(this._t("system.xbus_id"),device.id)}${this._technicalLine(this._t("system.serial"),device.serialNumber)}${this._technicalLine(this._t("system.firmware"),device.version)}${rows}</div></details>`;
   }).join("")}</div></div>`;
 };
 
