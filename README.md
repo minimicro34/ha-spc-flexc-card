@@ -98,6 +98,12 @@ an isolated zone is shown in red with an **Isolated / Isolé** badge, while an
 inhibited zone keeps its own inhibited indication. The card does not infer
 isolation from a raw SPC `STATUS` value.
 
+When SPC FlexC exposes a native zone restoration button, the card displays
+**Restore / Restaurer** only while the panel explicitly reports that restoration
+is allowed for that zone. The action uses Home Assistant's native `button.press`
+service and follows the card's normal confirmation setting. The SPC panel and
+integration remain authoritative for post-command verification.
+
 The visual convention is:
 
 - green — normal;
