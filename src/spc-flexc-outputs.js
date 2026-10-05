@@ -72,21 +72,40 @@ SpcFlexCCard.prototype._getZones = function () {
       }));
 
   for (const { entityId, stateObj, registryEntry } of candidates) {
-    if (!entityId.startsWith("switch.")) continue;
-
     const attrs = stateObj?.attributes || {};
     const uniqueId = String(registryEntry?.unique_id || "");
-    const match = uniqueId.match(/_zone_(\d+)_inhibition$/);
-    const zoneId = attrs.zone_id ?? match?.[1] ?? null;
 
-    if (zoneId == null) continue;
-    if (!match && attrs.zone_id == null) continue;
+    if (entityId.startsWith("switch.")) {
+      const match = uniqueId.match(/_zone_(\d+)_inhibition$/);
+      const zoneId = attrs.zone_id ?? match?.[1] ?? null;
 
-    const zone = byId.get(String(zoneId));
-    if (!zone) continue;
+      if (zoneId == null || (!match && attrs.zone_id == null)) continue;
 
-    zone.inhibited = stateObj.state === "on";
-    zone.inhibitionEntityId = entityId;
+      const zone = byId.get(String(zoneId));
+      if (!zone) continue;
+
+      zone.inhibited = stateObj.state === "on";
+      zone.inhibitionEntityId = entityId;
+      continue;
+    }
+
+    if (entityId.startsWith("button.")) {
+      const match = uniqueId.match(/_zone_(\d+)_restore$/);
+      if (!match && attrs.restore_allowed == null) continue;
+      const zoneId = attrs.zone_id ?? match?.[1] ?? null;
+      if (zoneId == null) continue;
+
+      const zone = byId.get(String(zoneId));
+      if (!zone) continue;
+
+      zone.restoreEntityId = entityId;
+      zone.restoreAllowed =
+        attrs.restore_allowed === true ||
+        attrs.restore_allowed === 1 ||
+        attrs.restore_allowed === "1";
+      zone.restoreAvailable =
+        zone.restoreAllowed && stateObj.state !== "unavailable";
+    }
   }
 
   return zones;
@@ -114,6 +133,14 @@ SpcFlexCCard.prototype._renderZoneRow = function (zone) {
       <div class="zone-state ${visualClass}">
         ${this._escapeHtml(stateInfo.label)}
       </div>
+
+      ${this._config.show_controls === false || !zone.restoreAvailable ? "" : `
+        <button type="button" class="zone-restore-button"
+          data-zone-restore-entity="${this._escapeHtml(zone.restoreEntityId)}"
+          data-zone-restore-name="${this._escapeHtml(zone.name)}">
+          ${this._t("action.restore")}
+        </button>
+      `}
     </div>
   `;
 };
@@ -286,6 +313,13 @@ SpcFlexCCard.prototype._renderActiveView = function () {
   }
 };
 
+SpcFlexCCard.prototype._callZoneRestore = async function (entityId, name) {
+  if (!this._hass || !entityId) return;
+  const prompt = this._t("confirm.restore_zone", { name });
+  if (this._config.confirm_actions && !window.confirm(prompt)) return;
+  await this._hass.callService("button", "press", { entity_id: entityId });
+};
+
 SpcFlexCCard.prototype._callMappingGate = async function (entityId, name, action) {
   if (!this._hass || !entityId || !["on", "off"].includes(action)) return;
   const actionLabel = action === "on" ? this._t("action.activate") : this._t("action.deactivate");
@@ -314,6 +348,18 @@ SpcFlexCCard.prototype._styles = function () {
       }
       .zone-row-inhibited {
         box-shadow:inset 3px 0 0 color-mix(in srgb,currentColor 55%,transparent);
+      }
+      .zone-restore-button {
+        appearance:none;
+        padding:7px 10px;
+        border:1px solid var(--warning-color,#ff9800);
+        border-radius:8px;
+        background:var(--card-background-color);
+        color:var(--warning-color,#ff9800);
+        cursor:pointer;
+        font:inherit;
+        font-size:12px;
+        font-weight:700;
       }
       .outputs-view { display:grid; gap:12px; }
       .output-list { display:grid; gap:7px; }
@@ -359,6 +405,14 @@ SpcFlexCCard.prototype._styles = function () {
 
 SpcFlexCCard.prototype._render = function () {
   spcFlexCBaseRender.call(this);
+  this.querySelectorAll("[data-zone-restore-entity]").forEach((button) => {
+    button.addEventListener("click", () => {
+      this._callZoneRestore(
+        button.dataset.zoneRestoreEntity,
+        button.dataset.zoneRestoreName || this._t("zone.name", { id: "" })
+      );
+    });
+  });
   this.querySelectorAll("[data-mg-entity]").forEach((button) => {
     button.addEventListener("click", () => {
       this._callMappingGate(
