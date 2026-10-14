@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.0.12] - Unreleased
+## [1.0.12] - 2026-10-15
 
 ### Added
 
@@ -16,7 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Home Assistant has no native mixed arming state. The card uses the integration's explicit `arming_summary` attribute rather than inferring mixed modes from an `unknown` state.
 - Requires an SPC FlexC integration version exposing the `arming_summary` attribute.
 
-## [1.0.11]
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.11...v1.0.12
+
+## [1.0.11] - 2026-10-15
 
 ### Added
 
