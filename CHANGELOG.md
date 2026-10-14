@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.12] - Unreleased
+
+### Added
+
+- Display a dedicated **Mixed / Mixte** global alarm state when the SPC FlexC integration reports `arming_summary=mixed` while the native Home Assistant alarm state is `unknown`.
+- Add a localized mixed-state label, warning styling and a dedicated icon.
+
+### Notes
+
+- Home Assistant has no native mixed arming state. The card uses the integration's explicit `arming_summary` attribute rather than inferring mixed modes from an `unknown` state.
+- Requires an SPC FlexC integration version exposing the `arming_summary` attribute.
+
+## [1.0.11]
+
+### Added
+
+- Add contextual zone restoration controls for SPC FlexC v1.1.2-beta11.
+- Display a **Restore / Restaurer** button only when the integration reports that zone restoration is currently allowed.
+- Use the native Home Assistant `button.press` service exposed by the integration.
+- Respect the card's existing confirmation setting before restoring a zone.
+- Add French and English translations for zone restoration.
+
+### Documentation
+
+- Document contextual zone restoration and its dependency on the state exposed by the SPC FlexC integration.
+
+### Notes
+
+- Zone restoration requires an SPC FlexC integration version exposing the native zone restore button, starting with v1.1.2-beta11.
+- The SPC panel and integration remain authoritative for restoration availability and post-command verification.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.10...v1.0.11
+
 ## [1.0.10] - 2026-09-24
 
 ### Fixed
