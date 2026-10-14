@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.11";
+const CARD_VERSION = "1.0.12";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -274,6 +274,7 @@ class SpcFlexCCard extends HTMLElement {
       pending: "state.pending",
       unavailable: "state.unavailable",
       unknown: "state.unknown",
+      mixed: "state.mixed",
     }[state];
 
     return key ? this._t(key) : state || this._t("state.unknown_short");
@@ -291,6 +292,7 @@ class SpcFlexCCard extends HTMLElement {
       case "armed_custom_bypass":
       case "arming":
       case "pending":
+      case "mixed":
         return "warning";
 
       case "triggered":
@@ -316,6 +318,9 @@ class SpcFlexCCard extends HTMLElement {
       case "arming":
       case "pending":
         return "mdi:lock-clock";
+
+      case "mixed":
+        return "mdi:lock-alert";
 
       case "triggered":
         return "mdi:alarm-light";
@@ -1937,7 +1942,10 @@ class SpcFlexCCard extends HTMLElement {
 
   _renderSystem() {
     const alarm = this._getAlarmEntity();
-    const state = alarm?.state || "unknown";
+    const rawState = alarm?.state || "unknown";
+    const state = rawState === "unknown" && alarm?.attributes?.arming_summary === "mixed"
+      ? "mixed"
+      : rawState;
     const areas = this._getAreas();
     const zones = this._getNormalZones();
     const tampers = this._getTamperZones();
@@ -4347,6 +4355,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "state.pending": "Temporisation",
     "state.unavailable": "Indisponible",
     "state.unknown": "État inconnu",
+    "state.mixed": "Armement mixte",
     "state.unknown_short": "Inconnu",
     "state.normal": "Normal",
     "state.on": "Activé",
@@ -4493,6 +4502,7 @@ const SPC_FLEXC_CARD_TRANSLATIONS = {
     "state.pending": "Pending",
     "state.unavailable": "Unavailable",
     "state.unknown": "Unknown state",
+    "state.mixed": "Mixed arming",
     "state.unknown_short": "Unknown",
     "state.normal": "Normal",
     "state.on": "On",
