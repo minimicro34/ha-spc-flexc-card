@@ -60,7 +60,7 @@ least one SPC Mapping Gate is exposed by the integration.
 
 The General view includes:
 
-- global alarm state;
+- global alarm state, including a **Mixed / Mixte** indication when SPC areas have different arming modes and the integration reports `arming_summary: mixed`;
 - area, detector and tamper counters;
 - FlexC connection status;
 - active SPC faults;
@@ -68,6 +68,8 @@ The General view includes:
 - global Disarm and Full Set controls.
 
 ### Areas
+
+The global alarm entity may have the native Home Assistant state `unknown` when areas have different arming modes. SPC FlexC Card v1.0.12 uses the integration's `arming_summary: mixed` attribute to display **Mixed / Mixte** instead of **Unknown / Inconnu**. Other unknown states remain unknown.
 
 The Areas view provides individual SPC area control and can display:
 
