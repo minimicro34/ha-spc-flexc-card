@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.13";
+const CARD_VERSION = "1.0.14";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -5744,6 +5744,19 @@ SpcFlexCCard.prototype._render = function () {
       previousActiveTab === freshActiveTab &&
       previousTabIds === freshTabIds
     ) {
+      // The intrusion banner lives outside .content. Synchronize it as well
+      // when keeping the existing card shell, otherwise it remains visible
+      // after disarming (or fails to update when triggering zones change).
+      const previousBanner = previousHaCard.querySelector(".spc-intrusion-banner");
+      const freshBanner = freshHaCard.querySelector(".spc-intrusion-banner");
+      if (previousBanner && freshBanner) {
+        previousBanner.replaceWith(freshBanner);
+      } else if (previousBanner) {
+        previousBanner.remove();
+      } else if (freshBanner) {
+        previousContent.before(freshBanner);
+      }
+
       previousContent.replaceWith(freshContent);
       this.replaceChildren(previousHaCard);
     }
