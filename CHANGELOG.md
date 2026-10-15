@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.14] - 2026-10-15
+
+### Fixed
+
+- Synchronize the intrusion banner during partial card updates so it disappears immediately after disarming without requiring a tab switch or page refresh.
+- Update the banner when active intrusion areas or triggering zones change, while preserving the stable card shell and avoiding full-card flicker.
+
+### Notes
+
+- This is a frontend rendering fix; no changes to SPC FlexC intrusion event processing are included.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.13...v1.0.14
+
 ## [1.0.13] - 2026-10-15
 
 ### Added
