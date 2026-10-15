@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.13] - 2026-10-15
+
+### Added
+
+- Display a flashing red intrusion banner when an area is in an active intrusion alarm state.
+- Show affected areas and triggering zone names in the intrusion banner.
+
+### Fixed
+
+- Keep the individual **Disarm / Désarmer** action available in the Areas tab when an area is in the `triggered` state.
+
+### Notes
+
+- Intrusion details require an SPC FlexC integration version supporting intrusion alarm tracking (v1.1.2-beta16 or later).
+- The banner uses alarm state and zone information reported by the integration.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.12...v1.0.13
+
 ## [1.0.12] - 2026-10-15
 
 ### Added
