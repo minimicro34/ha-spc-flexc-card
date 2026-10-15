@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.12";
+const CARD_VERSION = "1.0.13";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -2133,7 +2133,7 @@ class SpcFlexCCard extends HTMLElement {
           </button>
         `);
       }
-    } else if (stableArmedStates.has(state)) {
+    } else if (stableArmedStates.has(state) || state === "triggered") {
       buttons.push(`
         <button
           type="button"
@@ -2335,6 +2335,32 @@ class SpcFlexCCard extends HTMLElement {
     `;
   }
 
+  _renderIntrusionBanner() {
+    const alarm = this._getAlarmEntity();
+    const areas = this._getAreas();
+    const active = areas.filter((area) => area.raw?.alarm_event_active === true);
+    if (!active.length && alarm?.state !== "triggered") return "";
+
+    const details = active.map((area) => {
+      const zones = Array.isArray(area.raw?.alarm_zones)
+        ? area.raw.alarm_zones.map((zone) => zone?.name || `Zone ${zone?.zone_id ?? "?"}`)
+        : [];
+      return this._escapeHtml(
+        zones.length ? `${area.name} : ${zones.join(", ")}` : area.name
+      );
+    });
+
+    return `
+      <div class="spc-intrusion-banner" role="alert" aria-live="assertive">
+        <ha-icon icon="mdi:alarm-light"></ha-icon>
+        <div>
+          <strong>${this._escapeHtml(this._t("state.alarm"))}</strong>
+          ${details.length ? `<div>${details.join("<br>")}</div>` : ""}
+        </div>
+      </div>
+    `;
+  }
+
   _renderActiveView() {
     switch (this._activeTab) {
       case "areas":
@@ -2373,6 +2399,30 @@ class SpcFlexCCard extends HTMLElement {
 
         .card {
           padding: 22px;
+        }
+
+        .spc-intrusion-banner {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 14px;
+          margin-bottom: 16px;
+          border-radius: 10px;
+          background: var(--error-color, #b3261e);
+          color: #fff;
+          animation: spc-intrusion-pulse 1.3s ease-in-out infinite;
+        }
+
+        .spc-intrusion-banner ha-icon {
+          flex-shrink: 0;
+        }
+
+        @keyframes spc-intrusion-pulse {
+          50% { opacity: 0.65; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .spc-intrusion-banner { animation: none; }
         }
 
         .header {
@@ -3168,6 +3218,8 @@ class SpcFlexCCard extends HTMLElement {
           </div>
 
           ${this._renderTabs()}
+
+          ${this._renderIntrusionBanner()}
 
           <div class="content">
             ${this._renderActiveView()}
