@@ -2133,7 +2133,7 @@ class SpcFlexCCard extends HTMLElement {
           </button>
         `);
       }
-    } else if (stableArmedStates.has(state)) {
+    } else if (stableArmedStates.has(state) || state === "triggered") {
       buttons.push(`
         <button
           type="button"
