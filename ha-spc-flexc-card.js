@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.14";
+const CARD_VERSION = "1.0.15";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -677,59 +677,45 @@ class SpcFlexCCard extends HTMLElement {
       return "";
     }
 
-    const stableArmedStates = new Set([
-      "armed_away",
-      "armed_home",
-      "armed_night",
-      "armed_vacation",
-      "armed_custom_bypass",
-    ]);
-
-    let prefix;
-    let labelKey;
-
-    if (stateObj.state === "disarmed") {
-      prefix = "last_unset";
-      labelKey = "area.last_unset";
-    } else if (stableArmedStates.has(stateObj.state)) {
-      prefix = "last_set";
-      labelKey = "area.last_set";
-    } else {
-      return "";
-    }
-
     const attrs = stateObj.attributes || {};
-    const formattedTime = this._formatDateTime(
-      attrs[`${prefix}_time`]
-    );
+    const rows = [
+      ["last_arm", "last_set", "area.last_set"],
+      ["last_disarm", "last_unset", "area.last_unset"],
+    ].map(([prefix, legacyPrefix, labelKey]) => {
+      const selectedPrefix = attrs[`${prefix}_time`] ? prefix : legacyPrefix;
+      const formattedTime = this._formatDateTime(
+        attrs[`${selectedPrefix}_time`]
+      );
+      if (!formattedTime) {
+        return "";
+      }
 
-    if (!formattedTime) {
-      return "";
-    }
+      const user = [
+        attrs[`${selectedPrefix}_user_display_name`],
+        attrs[`${selectedPrefix}_user_name`],
+        attrs[`${selectedPrefix}_user_id`],
+      ]
+        .map((value) => String(value ?? "").trim())
+        .find(Boolean);
 
-    const userName = String(
-      attrs[`${prefix}_user_name`] ?? ""
-    ).trim();
-    const userId = String(
-      attrs[`${prefix}_user_id`] ?? ""
-    ).trim();
-    const user = userName || userId || null;
-
-    return `
-      <div class="last-change">
-        <div class="last-change-label">
-          ${this._escapeHtml(this._t(labelKey))}
+      return `
+        <div class="last-change">
+          <div class="last-change-label">
+            ${this._escapeHtml(this._t(labelKey))}
+          </div>
+          <div class="last-change-value">
+            ${this._escapeHtml(formattedTime)}
+            ${
+              user
+                ? `<span class="last-change-user"> · ${this._escapeHtml(user)}</span>`
+                : ""
+            }
+          </div>
         </div>
-        <div class="last-change-value">
-          ${this._escapeHtml(formattedTime)}
-          ${
-            user
-              ? `<span class="last-change-user"> · ${this._escapeHtml(user)}</span>`
-              : ""
-          }
-        </div>
-      </div>
-    `;
+      `;
+    });
+
+    return rows.filter(Boolean).join("");
   }
 
   async _ensureDiagnosticScope() {
