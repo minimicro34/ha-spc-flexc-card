@@ -77,9 +77,14 @@ The Areas view provides individual SPC area control and can display:
 - Arm or Disarm action according to the current state;
 - Part Set A / Part Set B when supported;
 - custom Part Set names exposed by the integration;
-- last Set / Unset information;
-- localized date and time;
-- user name, with user ID as fallback.
+- last arm and last disarm events displayed together, independently of the current area state;
+- localized date and time for each event;
+- configured user display alias, with the original SPC name and then user ID as fallbacks.
+
+When available, the card reads `last_arm_*` and `last_disarm_*` attributes from
+SPC FlexC area entities, including `*_user_display_name`. Older integration
+versions remain supported through the legacy `last_set_*` and `last_unset_*`
+attributes. Missing history rows are omitted.
 
 Starting with **v1.0.6**, area cards are collapsed by default and keep the area
 name and current arming state visible in the header. Each area can be expanded
