@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.15] - 2026-10-17
+
+### Added
+
+- Display the last arming and last disarming events together in each expanded SPC area card, regardless of its current alarm state.
+- Show the configured SPC user display alias when available, falling back to the original SPC user name and then the user ID.
+
+### Changed
+
+- Read the new `last_arm_*` and `last_disarm_*` area attributes, while retaining compatibility with legacy `last_set_*` and `last_unset_*` attributes.
+- Omit history entries that have no available timestamp.
+
+### Documentation
+
+- Explain dual area history, user alias display and compatibility with older SPC FlexC integration versions.
+
+### Notes
+
+- Full user alias and separate arm/disarm history support requires SPC FlexC integration v1.1.2-beta24 or later.
+- Area history is read from the integration; the card does not reconstruct missing events.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.14...v1.0.15
+
 ## [1.0.14] - 2026-10-15
 
 ### Fixed
