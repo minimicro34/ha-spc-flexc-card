@@ -31,6 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Multi-panel runtime verification remains pending with a tester using two SPC panels.
 
+**Full Changelog**: [v1.0.15...v1.0.16](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.15...v1.0.16)
+
 ## [1.0.15] - 2026-10-17
 
 ### Added
@@ -52,7 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Full user alias and separate arm/disarm history support requires SPC FlexC integration v1.1.2-beta24 or later.
 - Area history is read from the integration; the card does not reconstruct missing events.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.14...v1.0.15
+**Full Changelog**: [v1.0.14...v1.0.15](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.14...v1.0.15)
 
 ## [1.0.14] - 2026-10-15
 
@@ -65,7 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - This is a frontend rendering fix; no changes to SPC FlexC intrusion event processing are included.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.13...v1.0.14
+**Full Changelog**: [v1.0.13...v1.0.14](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.13...v1.0.14)
 
 ## [1.0.13] - 2026-10-15
 
@@ -83,7 +85,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Intrusion details require an SPC FlexC integration version supporting intrusion alarm tracking (v1.1.2-beta16 or later).
 - The banner uses alarm state and zone information reported by the integration.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.12...v1.0.13
+**Full Changelog**: [v1.0.12...v1.0.13](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.12...v1.0.13)
 
 ## [1.0.12] - 2026-10-15
 
@@ -97,7 +99,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Home Assistant has no native mixed arming state. The card uses the integration's explicit `arming_summary` attribute rather than inferring mixed modes from an `unknown` state.
 - Requires an SPC FlexC integration version exposing the `arming_summary` attribute.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.11...v1.0.12
+**Full Changelog**: [v1.0.11...v1.0.12](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.11...v1.0.12)
 
 ## [1.0.11] - 2026-10-15
 
@@ -118,7 +120,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Zone restoration requires an SPC FlexC integration version exposing the native zone restore button, starting with v1.1.2-beta11.
 - The SPC panel and integration remain authoritative for restoration availability and post-command verification.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.10...v1.0.11
+**Full Changelog**: [v1.0.10...v1.0.11](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.10...v1.0.11)
 
 ## [1.0.10] - 2026-09-24
 
@@ -132,7 +134,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Physical X-BUS devices continue to use their serial number as the frontend identity when available.
 - This keeps devices with duplicate local X-BUS IDs separate without creating spurious `X-BUS null` cards.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.9...v1.0.10
+**Full Changelog**: [v1.0.9...v1.0.10](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.9...v1.0.10)
 
 ## [1.0.9] - 2026-09-23
 
@@ -148,7 +150,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The local X-BUS ID remains visible as diagnostic information but is no longer used as the frontend device identity.
 - This aligns the card with the serial-based X-BUS identity model introduced for installations with duplicate local IDs.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.8...v1.0.9
+**Full Changelog**: [v1.0.8...v1.0.9](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.8...v1.0.9)
 
 ## [1.0.8] - 2026-09-19
 
@@ -173,7 +175,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - X-BUS tamper inhibition, isolation and fault states are consumed from the dedicated states exposed by SPC FlexC v1.1.1.
 - Full card rendering is still used when the active tab or available tab set changes.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.7...v1.0.8
+**Full Changelog**: [v1.0.7...v1.0.8](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.7...v1.0.8)
 
 ## [1.0.7] - 2026-09-17
 
@@ -194,7 +196,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - SPC zone inhibition and isolation remain separate states. The SPC panel and SPC FlexC integration remain authoritative for the operations currently allowed on each zone.
 - v1.0.7 is intended for validation with SPC FlexC integration v1.1.0 before the final card release.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.6...v1.0.7
+**Full Changelog**: [v1.0.6...v1.0.7](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.6...v1.0.7)
 
 ## [1.0.6] - 2026-09-13
 
@@ -222,7 +224,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - For the three-column desktop layout, use a Home Assistant **Sections** dashboard and set the section containing SPC FlexC Card to **Width 3**. Home Assistant automatically reduces the section width on smaller displays, while the card switches back to its single-column layout.
 - The browser-loaded card version remains available in **System → Panel / Centrale** to help detect stale frontend cache after HACS updates.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.5...v1.0.6
+**Full Changelog**: [v1.0.5...v1.0.6](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.5...v1.0.6)
 
 ## [1.0.5] - 2026-09-12
 
@@ -251,7 +253,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - SPC FlexC Card is a custom Lovelace dashboard resource rather than a Home Assistant integration package. Home Assistant does not automatically load integration-style `strings.json` / `translations/*.json` files for dashboard cards, so translations are bundled in the card JavaScript source.
 - The browser-loaded card version remains available in **System → Panel / Centrale** to help detect stale frontend cache after HACS updates.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.4...v1.0.5
+**Full Changelog**: [v1.0.4...v1.0.5](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.4...v1.0.5)
 
 ## [1.0.4] - 2026-09-12
 
@@ -269,7 +271,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Moved render scheduling into its own source module to keep it separate from SPC Outputs-specific functionality.
 - Updated build and validation scripts for the additional source module.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.3...v1.0.4
+**Full Changelog**: [v1.0.3...v1.0.4](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.3...v1.0.4)
 
 ## [1.0.3] - 2026-09-11
 
@@ -289,7 +291,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Improved reliability of zone state updates when the card did not visually refresh despite Home Assistant already having received the new zone state.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.2...v1.0.3
+**Full Changelog**: [v1.0.2...v1.0.3](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.2...v1.0.3)
 
 ## [1.0.2] - 2026-09-09
 
@@ -315,7 +317,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A Mapping Gate can be associated with a physical output or another programmed function in SPC, but this depends on the panel configuration.
 - Mapping Gate control uses the native Home Assistant switch entities exposed by SPC FlexC.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.1...v1.0.2
+**Full Changelog**: [v1.0.1...v1.0.2](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.1...v1.0.2)
 
 ## [1.0.1] - 2026-09-08
 
@@ -340,7 +342,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Door `Status` and `Mode` values remain intentionally uninterpreted until their numeric mappings are confirmed on real SPC access-control hardware.
 - Door commands are state-changing actions and remain protected by confirmation when `confirm_actions: true` is enabled.
 
-**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.0...v1.0.1
+**Full Changelog**: [v1.0.0...v1.0.1](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.0...v1.0.1)
 
 ## [1.0.0]
 
