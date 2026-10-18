@@ -24,13 +24,8 @@ SpcFlexCCard.prototype._getMappingGates = function () {
   if (!this._hass) return [];
 
   const scoped = this._scopedStates(true);
-  const candidates = scoped.length
-    ? scoped
-    : Object.entries(this._hass.states).map(([entityId, stateObj]) => ({
-        entityId,
-        stateObj,
-        registryEntry: null,
-      }));
+  // Never scan all Home Assistant entities if the selected SPC scope is unavailable.
+  const candidates = scoped;
 
   return candidates
     .filter(({ entityId, stateObj, registryEntry }) => {
@@ -63,13 +58,8 @@ SpcFlexCCard.prototype._getZones = function () {
 
   const byId = new Map(zones.map((zone) => [String(zone.zoneId), zone]));
   const scoped = this._scopedStates(true);
-  const candidates = scoped.length
-    ? scoped
-    : Object.entries(this._hass.states).map(([entityId, stateObj]) => ({
-        entityId,
-        stateObj,
-        registryEntry: null,
-      }));
+  // Never scan all Home Assistant entities if the selected SPC scope is unavailable.
+  const candidates = scoped;
 
   for (const { entityId, stateObj, registryEntry } of candidates) {
     const attrs = stateObj?.attributes || {};
@@ -315,6 +305,10 @@ SpcFlexCCard.prototype._renderActiveView = function () {
 
 SpcFlexCCard.prototype._callZoneRestore = async function (entityId, name) {
   if (!this._hass || !entityId) return;
+  if (!this._panelEntityIds()?.has(entityId)) {
+    console.warn("SPC FlexC Card: blocked cross-panel action", entityId);
+    return;
+  }
   const prompt = this._t("confirm.restore_zone", { name });
   if (this._config.confirm_actions && !window.confirm(prompt)) return;
   await this._hass.callService("button", "press", { entity_id: entityId });
@@ -322,6 +316,10 @@ SpcFlexCCard.prototype._callZoneRestore = async function (entityId, name) {
 
 SpcFlexCCard.prototype._callMappingGate = async function (entityId, name, action) {
   if (!this._hass || !entityId || !["on", "off"].includes(action)) return;
+  if (!this._panelEntityIds()?.has(entityId)) {
+    console.warn("SPC FlexC Card: blocked cross-panel action", entityId);
+    return;
+  }
   const actionLabel = action === "on" ? this._t("action.activate") : this._t("action.deactivate");
   const prompt = this._t("confirm.mapping_gate", { action: actionLabel, name });
   if (this._config.confirm_actions && !window.confirm(prompt)) return;
