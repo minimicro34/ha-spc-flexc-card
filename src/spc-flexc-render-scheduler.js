@@ -105,6 +105,9 @@ SpcFlexCCard.prototype._render = function () {
     // paint we transplant only the new content into the existing ha-card. This
     // avoids detaching/recreating the complete card on every SPC zone event.
     const previousHaCard = this.querySelector(":scope > ha-card");
+    // The tab strip is a scroll container inside the card, not an ancestor.
+    // Its scrollLeft is lost when the legacy renderer replaces innerHTML.
+    const previousTabsScrollLeft = previousHaCard?.querySelector(".tabs")?.scrollLeft ?? 0;
     const previousContent = previousHaCard?.querySelector(".content") || null;
     const previousActiveTab = previousHaCard?.querySelector("[data-tab].active")?.dataset?.tab || null;
     const previousTabIds = previousHaCard
@@ -155,6 +158,15 @@ SpcFlexCCard.prototype._render = function () {
       this.replaceChildren(previousHaCard);
     }
 
+    // Restore the horizontal tab position after the old shell is reattached
+    // (or after the new shell replaces it on a tab change).
+    const restoreTabsScroll = () => {
+      const tabs = this.querySelector(":scope > ha-card .tabs");
+      if (tabs) {
+        tabs.scrollLeft = previousTabsScrollLeft;
+      }
+    };
+    restoreTabsScroll();
     this._showCardVersion();
     this._restoreScrollPositions(scrollPositions);
 
@@ -165,6 +177,7 @@ SpcFlexCCard.prototype._render = function () {
 
     this._spcScrollRestoreFrame = window.requestAnimationFrame?.(() => {
       this._spcScrollRestoreFrame = null;
+      restoreTabsScroll();
       this._restoreScrollPositions(scrollPositions);
 
       // Release the temporary layout lock only after the replacement DOM has
