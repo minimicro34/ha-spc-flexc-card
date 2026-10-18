@@ -267,6 +267,40 @@ confirm_actions: true
 
 The card also provides a visual editor in Home Assistant.
 
+### Multiple SPC panels (v1.0.16)
+
+You can add one SPC FlexC Card per panel and select each panel's **global**
+`alarm_control_panel` entity independently. For example:
+
+```yaml
+type: custom:spc-flexc-card
+entity: alarm_control_panel.spc_1_alarm
+name: SPC 1
+```
+
+```yaml
+type: custom:spc-flexc-card
+entity: alarm_control_panel.spc_2_alarm
+name: SPC 2
+```
+
+These entity IDs are **examples**; use the actual global alarm entities created
+by your installations.
+
+Starting with v1.0.16, the card uses Home Assistant's entity registry to scope
+area, zone, output and access-control entities to the selected SPC configuration
+entry. This prevents area/zone ID collisions between panels. State-changing
+actions are blocked if the card cannot verify that the target entity belongs
+to the selected panel. If entity registry access is unavailable, affected
+controls and zone details may remain hidden rather than falling back to entities
+from another panel.
+
+**Multi-panel verification is pending:** the fix has not yet been validated on
+a live installation with two SPC panels. Please report any remaining panel
+selection, state-display or command-routing problems in
+[SPC FlexC Card issues](https://github.com/minimicro34/ha-spc-flexc-card/issues).
+
+
 ## Options
 
 | Option | Required | Default | Description |
