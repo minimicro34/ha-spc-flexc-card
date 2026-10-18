@@ -1,4 +1,4 @@
-const CARD_VERSION = "1.0.16";
+const CARD_VERSION = "1.0.17";
 
 class SpcFlexCCard extends HTMLElement {
   static getConfigElement() {
@@ -3284,18 +3284,35 @@ class SpcFlexCCard extends HTMLElement {
 
 class SpcFlexCCardEditor extends HTMLElement {
   setConfig(config) {
-    this._config = {
+    const nextConfig = {
       show_controls: true,
       confirm_actions: true,
       ...config,
     };
+    const previousConfig = this._config;
+    this._config = nextConfig;
 
-    this._render();
+    // Home Assistant may echo config-changed back through setConfig.
+    // Do not replace focused inputs when the visible settings are unchanged.
+    if (
+      !previousConfig ||
+      previousConfig.entity !== nextConfig.entity ||
+      previousConfig.name !== nextConfig.name ||
+      previousConfig.show_controls !== nextConfig.show_controls ||
+      previousConfig.confirm_actions !== nextConfig.confirm_actions
+    ) {
+      this._render();
+    }
   }
 
   set hass(hass) {
+    const wasReady = Boolean(this._hass);
     this._hass = hass;
-    this._render();
+    // State updates are frequent: rebuilding the editor would close an open
+    // dropdown and reset a field while the user is typing.
+    if (!wasReady) {
+      this._render();
+    }
   }
 
   _escapeHtml(value) {
