@@ -162,7 +162,7 @@ SpcFlexCCard.prototype._render = function () {
     // (or after the new shell replaces it on a tab change).
     const restoreTabsScroll = () => {
       const tabs = this.querySelector(":scope > ha-card .tabs");
-      if (tabs) {
+      if (tabs && tabs.scrollLeft !== previousTabsScrollLeft) {
         tabs.scrollLeft = previousTabsScrollLeft;
       }
     };
