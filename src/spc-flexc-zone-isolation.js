@@ -11,13 +11,8 @@ SpcFlexCCard.prototype._getZones = function () {
 
   const byId = new Map(zones.map((zone) => [String(zone.zoneId), zone]));
   const scoped = this._scopedStates(true);
-  const candidates = scoped.length
-    ? scoped
-    : Object.entries(this._hass.states).map(([entityId, stateObj]) => ({
-        entityId,
-        stateObj,
-        registryEntry: null,
-      }));
+  // Never scan all Home Assistant entities if the selected SPC scope is unavailable.
+  const candidates = scoped;
 
   // spc-flexc-outputs predates the isolation switch and historically accepted
   // every switch carrying zone_id as an inhibition switch. Once isolation was
