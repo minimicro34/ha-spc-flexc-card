@@ -99,18 +99,10 @@ SpcFlexCCard.prototype._render = function () {
 
     const scrollPositions = this._captureScrollPositions();
 
-    // Keep the already-painted card shell when the active tab has not changed.
-    // The legacy renderer still builds the fresh view so every extension keeps
-    // its normal post-processing and event listeners, but before the browser can
-    // paint we transplant only the new content into the existing ha-card. This
-    // avoids detaching/recreating the complete card on every SPC zone event.
+    // The base renderer now preserves the connected tab strip on routine updates.
     const previousHaCard = this.querySelector(":scope > ha-card");
-    const previousContent = previousHaCard?.querySelector(".content") || null;
-    const previousActiveTab = previousHaCard?.querySelector("[data-tab].active")?.dataset?.tab || null;
-    const previousTabIds = previousHaCard
-      ? Array.from(previousHaCard.querySelectorAll("[data-tab]"), (item) => item.dataset.tab).join("|")
-      : "";
-
+    // Preserve scroll position when the tab strip must actually be replaced.
+    const previousTabsScrollLeft = previousHaCard?.querySelector(".tabs")?.scrollLeft ?? 0;
     // The legacy renderer replaces the complete card DOM with innerHTML on
     // every HA update. Keep the host at its current rendered height while the
     // replacement custom elements are attached/upgraded. Without this guard,
@@ -124,37 +116,15 @@ SpcFlexCCard.prototype._render = function () {
 
     spcFlexCImmediateRender.call(this);
 
-    const freshHaCard = this.querySelector(":scope > ha-card");
-    const freshContent = freshHaCard?.querySelector(".content") || null;
-    const freshActiveTab = freshHaCard?.querySelector("[data-tab].active")?.dataset?.tab || null;
-    const freshTabIds = freshHaCard
-      ? Array.from(freshHaCard.querySelectorAll("[data-tab]"), (item) => item.dataset.tab).join("|")
-      : "";
-
-    if (
-      previousHaCard &&
-      previousContent &&
-      freshContent &&
-      previousActiveTab === freshActiveTab &&
-      previousTabIds === freshTabIds
-    ) {
-      // The intrusion banner lives outside .content. Synchronize it as well
-      // when keeping the existing card shell, otherwise it remains visible
-      // after disarming (or fails to update when triggering zones change).
-      const previousBanner = previousHaCard.querySelector(".spc-intrusion-banner");
-      const freshBanner = freshHaCard.querySelector(".spc-intrusion-banner");
-      if (previousBanner && freshBanner) {
-        previousBanner.replaceWith(freshBanner);
-      } else if (previousBanner) {
-        previousBanner.remove();
-      } else if (freshBanner) {
-        previousContent.before(freshBanner);
+    // Restore the horizontal tab position after the old shell is reattached
+    // (or after the new shell replaces it on a tab change).
+    const restoreTabsScroll = () => {
+      const tabs = this.querySelector(":scope > ha-card .tabs");
+      if (tabs && tabs.scrollLeft !== previousTabsScrollLeft) {
+        tabs.scrollLeft = previousTabsScrollLeft;
       }
-
-      previousContent.replaceWith(freshContent);
-      this.replaceChildren(previousHaCard);
-    }
-
+    };
+    restoreTabsScroll();
     this._showCardVersion();
     this._restoreScrollPositions(scrollPositions);
 
@@ -165,6 +135,7 @@ SpcFlexCCard.prototype._render = function () {
 
     this._spcScrollRestoreFrame = window.requestAnimationFrame?.(() => {
       this._spcScrollRestoreFrame = null;
+      restoreTabsScroll();
       this._restoreScrollPositions(scrollPositions);
 
       // Release the temporary layout lock only after the replacement DOM has

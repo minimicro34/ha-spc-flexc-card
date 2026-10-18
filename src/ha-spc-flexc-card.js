@@ -3227,7 +3227,13 @@ class SpcFlexCCard extends HTMLElement {
       stateObj.attributes.friendly_name ||
       "SPC FlexC";
 
-    this.innerHTML = `
+    const previousCard = this.querySelector(":scope > ha-card");
+    const previousTabIds = previousCard
+      ? Array.from(previousCard.querySelectorAll("[data-tab]"), (tab) => tab.dataset.tab).join("|")
+      : null;
+    const previousActiveTab = previousCard?.querySelector("[data-tab].active")?.dataset.tab;
+
+    const markup = `
       <ha-card>
         ${this._styles()}
 
@@ -3250,8 +3256,36 @@ class SpcFlexCCard extends HTMLElement {
         </div>
       </ha-card>
     `;
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    const nextCard = template.content.querySelector("ha-card");
+    const nextTabIds = Array.from(nextCard.querySelectorAll("[data-tab]"), (tab) => tab.dataset.tab).join("|");
+    const nextActiveTab = nextCard.querySelector("[data-tab].active")?.dataset.tab;
+    const preserveTabs = previousCard &&
+      previousTabIds === nextTabIds &&
+      previousActiveTab === nextActiveTab;
 
-    this.querySelectorAll("[data-tab]").forEach((button) => {
+    if (preserveTabs) {
+      // Keep the existing tab strip connected during routine state updates.
+      // Firefox otherwise reactivates its overlay scrollbar on each DOM detach.
+      const oldContent = previousCard.querySelector(".content");
+      const nextContent = nextCard.querySelector(".content");
+      if (oldContent && nextContent) oldContent.replaceWith(nextContent);
+
+      const oldBanner = previousCard.querySelector(".spc-intrusion-banner");
+      const nextBanner = nextCard.querySelector(".spc-intrusion-banner");
+      if (oldBanner && nextBanner) oldBanner.replaceWith(nextBanner);
+      else if (oldBanner) oldBanner.remove();
+      else if (nextBanner) previousCard.querySelector(".content")?.before(nextBanner);
+
+      const oldTitle = previousCard.querySelector(".title");
+      const nextTitle = nextCard.querySelector(".title");
+      if (oldTitle && nextTitle) oldTitle.textContent = nextTitle.textContent;
+    } else {
+      this.replaceChildren(nextCard);
+    }
+
+    if (!preserveTabs) this.querySelectorAll("[data-tab]").forEach((button) => {
       button.addEventListener("click", () => {
         this._activeTab = button.dataset.tab;
         this._saveActiveTab(this._activeTab);

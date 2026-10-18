@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.18] - 2026-10-18
+
+### Fixed
+
+- Preserve horizontal tab scroll position during Home Assistant state updates.
+- Keep the existing tab strip connected during routine card renders, preventing Firefox's horizontal scrollbar from reappearing or flickering without user interaction.
+- Avoid unnecessary tab scroll assignments and preserve working tab interactions.
+
+### Validation
+
+- Tested on macOS with Firefox and Chrome, and on Windows with Firefox, Chrome and Edge; no spontaneous scrollbar flicker observed.
+- Mapping gate commands and alarm arming/disarming tested successfully.
+- Multi-panel dashboard with two card instances retained during browser testing.
+
+**Full Changelog**: [v1.0.17...v1.0.18](https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.17...v1.0.18)
+
 ## [1.0.17] - 2026-10-18
 
 ### Fixed
