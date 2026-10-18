@@ -45,6 +45,8 @@ class SpcFlexCCard extends HTMLElement {
     }
 
     if (entityChanged) {
+      // Invalidate any registry request started for the previous panel.
+      this._scopeGeneration = (this._scopeGeneration || 0) + 1;
       this._diagnosticScope = null;
       this._diagnosticScopeForEntity = null;
       this._diagnosticScopeLoading = false;
@@ -406,30 +408,36 @@ class SpcFlexCCard extends HTMLElement {
   }
 
   _getAreaAlarmEntity(areaId) {
-    if (!this._hass) {
+    const ids = this._panelEntityIds();
+    if (!ids || !this._hass) {
       return null;
     }
 
     const id = String(areaId);
+    return Array.from(ids)
+      .filter((entityId) => entityId.startsWith("alarm_control_panel."))
+      .map((entityId) => ({ entityId, stateObj: this._hass.states[entityId] }))
+      .find(({ stateObj }) =>
+        stateObj && String(stateObj.attributes?.area_id ?? "") === id
+      ) || null;
+  }
 
-    return (
-      Object.entries(this._hass.states)
-        .filter(([entityId]) =>
-          entityId.startsWith("alarm_control_panel.")
-        )
-        .map(([entityId, stateObj]) => ({
-          entityId,
-          stateObj,
-        }))
-        .find(
-          ({ stateObj }) =>
-            String(stateObj?.attributes?.area_id ?? "") === id
-        ) || null
-    );
+  // Never fall back to a global entity lookup: identical area/zone IDs
+  // are normal when multiple SPC panels are configured.
+  _panelEntityIds() {
+    if (
+      this._diagnosticScopeForEntity !== this._config?.entity ||
+      !this._diagnosticScope?.integrationEntityIds ||
+      !this._diagnosticScope?.selected?.config_entry_id
+    ) {
+      return null;
+    }
+    return this._diagnosticScope.integrationEntityIds;
   }
 
   _getZones() {
-    if (!this._hass) {
+    const panelIds = this._panelEntityIds();
+    if (!this._hass || !panelIds) {
       return [];
     }
 
@@ -443,7 +451,7 @@ class SpcFlexCCard extends HTMLElement {
 
     return Object.entries(states)
       .filter(([entityId, stateObj]) => {
-        if (!entityId.startsWith("binary_sensor.")) {
+        if (!panelIds.has(entityId) || !entityId.startsWith("binary_sensor.")) {
           return false;
         }
 
@@ -739,6 +747,8 @@ class SpcFlexCCard extends HTMLElement {
     }
 
     this._diagnosticScopeLoading = true;
+    const generation = this._scopeGeneration || 0;
+    const requestedEntity = this._config.entity;
 
     try {
       const [entries, devices] = await Promise.all([
@@ -750,9 +760,14 @@ class SpcFlexCCard extends HTMLElement {
         }).catch(() => []),
       ]);
 
+      // Ignore stale results if the editor switched panels while loading.
+      if (generation !== (this._scopeGeneration || 0) ||
+          requestedEntity !== this._config?.entity) {
+        return;
+      }
+
       const selected = entries.find(
-        (entry) =>
-          entry.entity_id === this._config.entity
+        (entry) => entry.entity_id === requestedEntity
       );
 
       if (!selected) {
@@ -839,6 +854,10 @@ class SpcFlexCCard extends HTMLElement {
         };
       }
     } catch (error) {
+      if (generation !== (this._scopeGeneration || 0) ||
+          requestedEntity !== this._config?.entity) {
+        return;
+      }
       console.warn(
         "SPC FlexC Card: unable to read Home Assistant registries for diagnostics",
         error
@@ -854,11 +873,12 @@ class SpcFlexCCard extends HTMLElement {
         entryMap: new Map(),
       };
     } finally {
-      this._diagnosticScopeForEntity =
-        this._config.entity;
-
-      this._diagnosticScopeLoading = false;
-      this._render();
+      if (generation === (this._scopeGeneration || 0) &&
+          requestedEntity === this._config?.entity) {
+        this._diagnosticScopeForEntity = requestedEntity;
+        this._diagnosticScopeLoading = false;
+        this._render();
+      }
     }
   }
 
@@ -1580,6 +1600,14 @@ class SpcFlexCCard extends HTMLElement {
     actionLabel = null
   ) {
     if (!this._hass || !entityId) {
+      return;
+    }
+
+    // Fail closed if the selected panel cannot be established or the target
+    // belongs to another config entry. The panel-level entity is allowed.
+    const panelIds = this._panelEntityIds();
+    if (!panelIds?.has(entityId)) {
+      console.warn("SPC FlexC Card: blocked alarm command outside selected panel", entityId);
       return;
     }
 
