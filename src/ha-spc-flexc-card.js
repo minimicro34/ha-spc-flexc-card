@@ -1654,6 +1654,8 @@ class SpcFlexCCard extends HTMLElement {
       return;
     }
 
+    if (!this._panelEntityIds()?.has(entityId)) return;
+
     await this._hass.callService(
       "alarm_control_panel",
       service,
@@ -1911,6 +1913,11 @@ class SpcFlexCCard extends HTMLElement {
       return;
     }
 
+    if (!this._panelEntityIds()?.has(entityId)) {
+      console.warn("SPC FlexC Card: blocked cross-panel door command", entityId);
+      return;
+    }
+
     if (
       this._config.confirm_actions &&
       !window.confirm(
@@ -1922,6 +1929,8 @@ class SpcFlexCCard extends HTMLElement {
     ) {
       return;
     }
+
+    if (!this._panelEntityIds()?.has(entityId)) return;
 
     await this._hass.callService(
       "button",
