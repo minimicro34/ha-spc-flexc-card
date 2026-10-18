@@ -97,18 +97,6 @@ SpcFlexCCard.prototype._render = function () {
     this._spcRenderFrame = null;
     this._spcRenderUsesAnimationFrame = false;
 
-    // Temporary diagnostic for Firefox scrollbar flicker (PR #4).
-    // Logs only when explicitly enabled from the browser console.
-    if (window.__spcFlexcRenderDebug === true) {
-      this._spcDebugRenderCount = (this._spcDebugRenderCount || 0) + 1;
-      console.debug("[SPC FlexC render]", {
-        count: this._spcDebugRenderCount,
-        at: new Date().toLocaleTimeString(),
-        activeTab: this._activeTab,
-        tabScrollLeft: this.querySelector(":scope > ha-card .tabs")?.scrollLeft ?? null,
-      });
-    }
-
     const scrollPositions = this._captureScrollPositions();
 
     // The base renderer now preserves the connected tab strip on routine updates.
