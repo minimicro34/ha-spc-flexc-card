@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.17] - 2026-10-18
+
+### Fixed
+
+- Preserve the Lovelace graphical editor's alarm entity dropdown and card name input during frequent Home Assistant state updates.
+- Avoid rebuilding editor controls when Home Assistant echoes unchanged visible configuration settings, preventing interrupted selection and text entry.
+
+### Validation
+
+- Build and browser validation pending; graphical editor fix is intended to address the issue reported in [#3](https://github.com/minimicro34/ha-spc-flexc-card/issues/3).
+- Multi-panel operation in v1.0.16 was confirmed by a tester with two SPC panels.
+
+**Full Changelog**: https://github.com/minimicro34/ha-spc-flexc-card/compare/v1.0.16...v1.0.17
+
 ## [1.0.16] - 2026-10-18
 
 ### Fixed
