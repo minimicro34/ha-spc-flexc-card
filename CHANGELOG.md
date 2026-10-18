@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.16] - 2026-10-18
+
+### Fixed
+
+- Scope area and zone entities to the selected SPC configuration entry, preventing collisions when multiple panels use identical area or zone IDs.
+- Block alarm, zone restore and mapping-gate commands if their target entity cannot be verified as belonging to the selected SPC.
+- Remove global entity fallbacks for mapping gates, zone inhibition and isolation.
+- Ignore stale registry results when switching between SPC panels in the card editor.
+
+### Validation
+
+- Multi-panel runtime verification remains pending with a tester using two SPC panels.
+
 ## [1.0.15] - 2026-10-17
 
 ### Added
