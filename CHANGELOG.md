@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.27] - Unreleased
+
+### Changed
+
+- Display seconds in FlexC event-history timestamps using the selected Home Assistant locale.
+- Reduce vertical padding in event-history rows for a more compact technical view.
+- Synchronize the standalone card's source files, JavaScript bundle and package metadata with the v1.0.27 frontend bundled in SPC FlexC v1.1.5-beta.14 development.
+
+### Validation
+
+- Pending standalone card CI/build validation and browser testing; no release has been published.
+
+---
+
 ## [1.0.18] - 2026-10-18
 
 ### Fixed
