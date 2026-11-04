@@ -273,14 +273,15 @@ SpcFlexCCard.prototype._renderTabs = function () {
   const hasDoors = this._getDoors().length > 0;
   const hasOutputs = this._getMappingGates().length > 0;
   if (this._activeTab === "doors" && !hasDoors) this._activeTab = "system";
-  if (this._activeTab === "outputs" && !hasOutputs) this._activeTab = "system";
+  const scopePending = !this._panelEntityIds();
+  if (this._activeTab === "outputs" && !hasOutputs && !scopePending) this._activeTab = "system";
 
   const tabs = [
     ["system", this._t("tab.general")],
     ["areas", this._t("tab.areas")],
     ["zones", this._t("tab.detectors")],
     ...(hasDoors ? [["doors", this._t("tab.doors")]] : []),
-    ...(hasOutputs ? [["outputs", this._t("tab.outputs")]] : []),
+    ...(hasOutputs || (scopePending && this._activeTab === "outputs") ? [["outputs", this._t("tab.outputs")]] : []),
     ["technical", this._t("tab.system")],
   ];
 
@@ -296,7 +297,9 @@ SpcFlexCCard.prototype._renderActiveView = function () {
     case "areas": return this._renderAreas();
     case "zones": return this._renderZones();
     case "doors": return this._getDoors().length ? this._renderDoors() : this._renderSystem();
-    case "outputs": return this._getMappingGates().length ? this._renderOutputs() : this._renderSystem();
+    case "outputs": return !this._panelEntityIds()
+      ? `<div class="empty-state"><ha-icon icon="mdi:progress-clock"></ha-icon><div>${this._t("zone.loading", {}, "Chargement des entités SPC…")}</div></div>`
+      : this._renderOutputs();
     case "technical": return this._renderTechnicalSystem();
     case "system":
     default: return this._renderSystem();
@@ -347,7 +350,13 @@ SpcFlexCCard.prototype._styles = function () {
       .zone-row-inhibited {
         box-shadow:inset 3px 0 0 color-mix(in srgb,currentColor 55%,transparent);
       }
+      .zone-row:has(> .zone-restore-button) {
+        grid-template-columns:46px minmax(0,1fr) auto auto;
+      }
       .zone-restore-button {
+        min-width:max-content;
+        white-space:nowrap;
+        justify-self:end;
         appearance:none;
         padding:7px 10px;
         border:1px solid var(--warning-color,#ff9800);
