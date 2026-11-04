@@ -54,6 +54,13 @@ The **Doors** view is displayed only when the SPC FlexC integration discovers at
 least one SPC access-control door. The **Outputs** view is displayed only when at
 least one SPC Mapping Gate is exposed by the integration.
 
+## Upcoming v1.0.27 (unreleased)
+
+The FlexC event history in the System view displays event timestamps with
+seconds and uses more compact rows. This helps compare live SPC event arrival
+with Home Assistant automation timing. The changes are available on the
+`develop/v1.0.27` branch; browser and CI validation are still pending.
+
 ## Features
 
 ### General
